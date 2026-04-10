@@ -16,9 +16,64 @@ USERS = {
     "staff2": {"password": "123", "role": "staff"}
 }
 
-# ---------------- DB PATH FIX ----------------
+# ---------------- DB PATH ----------------
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(BASE_DIR, "students.db")
+
+
+# ---------------- LOAD EXCEL INTO DB (FRESH EVERY TIME) ----------------
+def load_excel_to_db():
+    excel_path = os.path.join(BASE_DIR, "MBA.xlsx")
+
+    print("📂 Looking for Excel at:", excel_path)
+
+    if not os.path.exists(excel_path):
+        print("❌ MBA.xlsx NOT FOUND")
+        return
+
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+
+    # 🔥 RESET TABLE (IMPORTANT FIX)
+    cursor.execute("DROP TABLE IF EXISTS students")
+
+    cursor.execute("""
+        CREATE TABLE students (
+            id TEXT PRIMARY KEY,
+            srn TEXT,
+            name TEXT,
+            section TEXT,
+            seat TEXT,
+            check_in TEXT,
+            check_out TEXT,
+            remark TEXT
+        )
+    """)
+
+    df = pd.read_excel(excel_path)
+
+    print("📊 Loading Fresh Data...")
+
+    for _, row in df.iterrows():
+        cursor.execute("""
+            INSERT INTO students (id, srn, name, section, seat)
+            VALUES (?, ?, ?, ?, ?)
+        """, (
+            str(row.get('PRN', '')).strip(),
+            str(row.get('SRN', '')).strip(),
+            str(row.get('Name', '')).strip(),
+            str(row.get('Section', '')).strip(),
+            str(row.get('Seat Number', '')).replace("-", "").strip()
+        ))
+
+    conn.commit()
+    conn.close()
+
+    print("✅ Fresh Data Loaded Successfully")
+
+
+# 🔥 LOAD DATA ON START
+load_excel_to_db()
 
 
 # ---------------- LOGIN ----------------
@@ -53,9 +108,7 @@ def home():
     return render_template('index.html', role=session['role'])
 
 
-# -------------------------------
-# SCAN (AUTO + BUTTON)
-# -------------------------------
+# ---------------- SCAN ----------------
 @app.route('/scan', methods=['POST'])
 def scan():
     data = request.get_json()
@@ -79,37 +132,23 @@ def scan():
 
     name, seat, check_in, check_out = student
 
-    # CHECK-IN
     if not check_in:
-        cursor.execute("""
-            UPDATE students SET check_in=? 
-            WHERE id=?
-        """, (time_now, student_id))
-
+        cursor.execute("UPDATE students SET check_in=? WHERE id=?", (time_now, student_id))
         conn.commit()
         conn.close()
-
         return jsonify({"name": name, "seat": seat, "status": "IN"})
 
-    # CHECK-OUT
     elif not check_out:
-        cursor.execute("""
-            UPDATE students SET check_out=? 
-            WHERE id=?
-        """, (time_now, student_id))
-
+        cursor.execute("UPDATE students SET check_out=? WHERE id=?", (time_now, student_id))
         conn.commit()
         conn.close()
-
         return jsonify({"name": name, "seat": seat, "status": "OUT"})
 
     conn.close()
     return jsonify({"status": "DONE"})
 
 
-# -------------------------------
-# LOAD SEATS
-# -------------------------------
+# ---------------- SEATS ----------------
 @app.route('/seats')
 def seats():
     conn = sqlite3.connect(DB_PATH)
@@ -139,18 +178,13 @@ def seats():
     return jsonify(result)
 
 
-# -------------------------------
-# GET STUDENT
-# -------------------------------
+# ---------------- STUDENT ----------------
 @app.route('/student/<seat>')
 def get_student(seat):
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
 
-    cursor.execute("""
-        SELECT name, remark FROM students WHERE seat=?
-    """, (seat,))
-
+    cursor.execute("SELECT name, remark FROM students WHERE seat=?", (seat,))
     student = cursor.fetchone()
     conn.close()
 
@@ -164,9 +198,7 @@ def get_student(seat):
     })
 
 
-# -------------------------------
-# DISCIPLINE
-# -------------------------------
+# ---------------- DISCIPLINE ----------------
 @app.route('/discipline', methods=['POST'])
 def discipline():
     data = request.get_json()
@@ -176,10 +208,7 @@ def discipline():
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
 
-    cursor.execute("""
-        UPDATE students SET remark=? 
-        WHERE seat=?
-    """, (action, seat))
+    cursor.execute("UPDATE students SET remark=? WHERE seat=?", (action, seat))
 
     conn.commit()
     conn.close()
@@ -187,9 +216,7 @@ def discipline():
     return jsonify({"status": "ok"})
 
 
-# -------------------------------
-# DOWNLOAD EXCEL
-# -------------------------------
+# ---------------- DOWNLOAD ----------------
 @app.route('/download')
 def download():
     conn = sqlite3.connect(DB_PATH)
