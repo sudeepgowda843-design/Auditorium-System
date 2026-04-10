@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Auditorium</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+
+<body>
+
+<!-- 🔥 WATERMARK -->
+<div class="watermark"></div>
+
+<!-- 🔥 HEADER -->
+<div class="header">
+    <img src="/static/logo.png" class="logo">
+    <h1>AUDITORIUM SYSTEM</h1>
+</div>
+
+<!-- 🔥 CONTROLS -->
+<input id="studentId" placeholder="Scan ID..." autofocus>
+<button onclick="scanStudent()">Scan</button>
+<button onclick="downloadExcel()">⬇ Download</button>
+<button onclick="logout()">Logout</button>
+
+<h2 id="name">-</h2>
+<h1 id="seat">--</h1>
+
+<!-- 🔥 GRID -->
+<div id="grid" class="grid"></div>
+
+<!-- 🔥 DISCIPLINE -->
+<div>
+    <select id="action">
+        <option>Sleeping</option>
+        <option>Using Phone</option>
+        <option>Talking</option>
+        <option>Arguing with Faculty</option>
+        <option>Frequent breaks</option>
+    </select>
+    <button onclick="markDiscipline()">Submit</button>
+</div>
+
+<script>
+
+// 🔥 CREATE GRID
+function createGrid(){
+    let grid = document.getElementById("grid");
+    grid.innerHTML = "";
+
+    for(let r=1;r<=19;r++){
+        let rowLetter = String.fromCharCode(64+r);
+
+        for(let c=1;c<=22;c++){
+            let seatId = `${rowLetter}${c}`;
+
+            let seat = document.createElement("div");
+            seat.className="seat";
+            seat.id=seatId;
+            seat.innerHTML = "<b>" + seatId + "</b>";
+
+            seat.onclick=()=>showStudent(seatId);
+
+            grid.appendChild(seat);
+        }
+    }
+}
+
+/////////////////////////////
+// 🔥 AUTO SCAN (NO BUTTON)
+/////////////////////////////
+
+let typingTimer;
+
+document.getElementById("studentId").addEventListener("input", function(){
+    clearTimeout(typingTimer);
+
+    typingTimer = setTimeout(() => {
+        scanStudent();
+    }, 300);
+});
+
+/////////////////////////////
+// 🔥 SCAN
+/////////////////////////////
+
+async function scanStudent(){
+    let input = document.getElementById("studentId");
+    let id = input.value.trim();
+
+    if(!id) return;
+
+    let res = await fetch('/scan',{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({student_id:id})
+    });
+
+    let data = await res.json();
+
+    if(data.error){
+        alert(data.error);
+        input.value="";
+        return;
+    }
+
+    document.getElementById("name").innerText = data.name;
+    document.getElementById("seat").innerText = data.seat;
+
+    input.value="";
+    input.focus();
+
+    loadSeats();
+}
+
+/////////////////////////////
+// 🔥 LOAD SEATS + SHOW NAME
+/////////////////////////////
+
+async function loadSeats(){
+    let res = await fetch('/seats');
+    let data = await res.json();
+
+    // RESET
+    document.querySelectorAll('.seat').forEach(s=>{
+        s.classList.remove("green","red");
+        s.innerHTML = "<b>" + s.id + "</b>";
+    });
+
+    data.forEach(s=>{
+        let seat = document.getElementById(s.seat);
+
+        if(seat){
+            if(s.status === "IN") seat.classList.add("green");
+            if(s.status === "OUT") seat.classList.add("red");
+
+            // 🔥 SHOW NAME
+            seat.innerHTML = `<b>${s.seat}</b><br>${s.name || ""}`;
+        }
+    });
+}
+
+/////////////////////////////
+// 🔥 CLICK SEAT
+/////////////////////////////
+
+async function showStudent(seat){
+    let res = await fetch('/student/'+seat);
+    let data = await res.json();
+
+    if(data.error){
+        alert("No student");
+        return;
+    }
+
+    document.getElementById("name").innerText = data.name;
+    document.getElementById("seat").innerText = seat;
+
+    if(data.remark){
+        alert("Remark: " + data.remark);
+    }
+}
+
+/////////////////////////////
+// 🔥 DISCIPLINE
+/////////////////////////////
+
+function markDiscipline(){
+    let seat = document.getElementById("seat").innerText;
+    let action = document.getElementById("action").value;
+
+    fetch('/discipline',{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({seat:seat,action:action})
+    });
+
+    alert("Remark Saved!");
+}
+
+/////////////////////////////
+// 🔥 DOWNLOAD
+/////////////////////////////
+
+function downloadExcel(){
+    window.location.href="/download";
+}
+
+/////////////////////////////
+// 🔥 LOGOUT
+/////////////////////////////
+
+function logout(){
+    window.location.href="/logout";
+}
+
+/////////////////////////////
+// 🔥 AUTO REFRESH
+/////////////////////////////
+
+setInterval(loadSeats, 2000);
+
+createGrid();
+loadSeats();
+
+</script>
+
+</body>
+</html>
