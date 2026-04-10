@@ -21,7 +21,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(BASE_DIR, "students.db")
 
 
-# ---------------- LOAD EXCEL INTO DB (FRESH EVERY TIME) ----------------
+# ---------------- LOAD EXCEL INTO DB ----------------
 def load_excel_to_db():
     excel_path = os.path.join(BASE_DIR, "MBA.xlsx")
 
@@ -34,7 +34,7 @@ def load_excel_to_db():
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
 
-    # 🔥 RESET TABLE (IMPORTANT FIX)
+    # 🔥 RESET TABLE EVERY TIME
     cursor.execute("DROP TABLE IF EXISTS students")
 
     cursor.execute("""
@@ -72,8 +72,11 @@ def load_excel_to_db():
     print("✅ Fresh Data Loaded Successfully")
 
 
-# 🔥 LOAD DATA ON START
-load_excel_to_db()
+# 🔥 RUN ON FIRST REQUEST (FIX FOR RENDER)
+@app.before_first_request
+def initialize():
+    print("🔄 Resetting database on first request...")
+    load_excel_to_db()
 
 
 # ---------------- LOGIN ----------------
