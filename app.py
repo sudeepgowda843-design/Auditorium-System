@@ -1,7 +1,8 @@
-from flask import Flask, request, jsonify, render_template, send_file,redirect,session
+from flask import Flask, request, jsonify, render_template, send_file, redirect, session
 import sqlite3
 import pandas as pd
-from datetime import datetime, date
+from datetime import datetime
+import os
 
 app = Flask(__name__)
 app.secret_key = 'supersecretkey'
@@ -14,6 +15,11 @@ USERS = {
     "staff1": {"password": "123", "role": "staff"},
     "staff2": {"password": "123", "role": "staff"}
 }
+
+# ---------------- DB PATH FIX ----------------
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DB_PATH = os.path.join(BASE_DIR, "students.db")
+
 
 # ---------------- LOGIN ----------------
 @app.route('/login', methods=['GET', 'POST'])
@@ -55,16 +61,15 @@ def scan():
     data = request.get_json()
     student_id = data.get('student_id')
 
-    today = str(date.today())
     time_now = datetime.now().strftime("%H:%M:%S")
 
-    conn = sqlite3.connect("students.db")
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
 
     cursor.execute("""
         SELECT name, seat, check_in, check_out 
-        FROM students WHERE id=? AND date=?
-    """, (student_id, today))
+        FROM students WHERE id=?
+    """, (student_id,))
 
     student = cursor.fetchone()
 
@@ -78,8 +83,8 @@ def scan():
     if not check_in:
         cursor.execute("""
             UPDATE students SET check_in=? 
-            WHERE id=? AND date=?
-        """, (time_now, student_id, today))
+            WHERE id=?
+        """, (time_now, student_id))
 
         conn.commit()
         conn.close()
@@ -87,11 +92,11 @@ def scan():
         return jsonify({"name": name, "seat": seat, "status": "IN"})
 
     # CHECK-OUT
-    if not check_out:
+    elif not check_out:
         cursor.execute("""
             UPDATE students SET check_out=? 
-            WHERE id=? AND date=?
-        """, (time_now, student_id, today))
+            WHERE id=?
+        """, (time_now, student_id))
 
         conn.commit()
         conn.close()
@@ -107,12 +112,10 @@ def scan():
 # -------------------------------
 @app.route('/seats')
 def seats():
-    today = str(date.today())
-
-    conn = sqlite3.connect("students.db")
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
 
-    cursor.execute("SELECT seat, check_in, check_out FROM students WHERE date=?", (today,))
+    cursor.execute("SELECT seat, check_in, check_out FROM students")
     rows = cursor.fetchall()
     conn.close()
 
@@ -141,14 +144,12 @@ def seats():
 # -------------------------------
 @app.route('/student/<seat>')
 def get_student(seat):
-    today = str(date.today())
-
-    conn = sqlite3.connect("students.db")
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
 
     cursor.execute("""
-        SELECT name, remark FROM students WHERE seat=? AND date=?
-    """, (seat, today))
+        SELECT name, remark FROM students WHERE seat=?
+    """, (seat,))
 
     student = cursor.fetchone()
     conn.close()
@@ -172,15 +173,13 @@ def discipline():
     seat = data.get('seat')
     action = data.get('action')
 
-    today = str(date.today())
-
-    conn = sqlite3.connect("students.db")
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
 
     cursor.execute("""
         UPDATE students SET remark=? 
-        WHERE seat=? AND date=?
-    """, (action, seat, today))
+        WHERE seat=?
+    """, (action, seat))
 
     conn.commit()
     conn.close()
@@ -193,26 +192,25 @@ def discipline():
 # -------------------------------
 @app.route('/download')
 def download():
-    today = str(date.today())
-
-    conn = sqlite3.connect("students.db")
+    conn = sqlite3.connect(DB_PATH)
 
     df = pd.read_sql_query("""
         SELECT id as PRN, srn as SRN, name as Name, 
                section as Section, seat as Seat,
                check_in as CheckIn, check_out as CheckOut,
                remark as Remarks
-        FROM students WHERE date=?
-    """, conn, params=(today,))
+        FROM students
+    """, conn)
 
     conn.close()
 
-    file = f"attendance_{today}.xlsx"
+    file = "attendance.xlsx"
     df.to_excel(file, index=False)
 
     return send_file(file, as_attachment=True)
 
 
 # ---------------- RUN ----------------
-if __name__ == '__main__':
-    app.run(host='127.0.0.1', port=5050, debug=True)
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 5050))
+    app.run(host="0.0.0.0", port=port)
