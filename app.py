@@ -20,6 +20,9 @@ USERS = {
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(BASE_DIR, "students.db")
 
+# 🔥 FLAG (IMPORTANT)
+db_loaded = False
+
 
 # ---------------- LOAD EXCEL INTO DB ----------------
 def load_excel_to_db():
@@ -34,7 +37,7 @@ def load_excel_to_db():
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
 
-    # 🔥 RESET TABLE EVERY TIME
+    # RESET TABLE
     cursor.execute("DROP TABLE IF EXISTS students")
 
     cursor.execute("""
@@ -72,11 +75,14 @@ def load_excel_to_db():
     print("✅ Fresh Data Loaded Successfully")
 
 
-# 🔥 RUN ON FIRST REQUEST (FIX FOR RENDER)
-@app.before_first_request
-def initialize():
-    print("🔄 Resetting database on first request...")
-    load_excel_to_db()
+# 🔥 RUN ONLY ON FIRST REQUEST (Flask 3 FIX)
+@app.before_request
+def initialize_once():
+    global db_loaded
+    if not db_loaded:
+        print("🔄 First request → loading database...")
+        load_excel_to_db()
+        db_loaded = True
 
 
 # ---------------- LOGIN ----------------
@@ -242,5 +248,4 @@ def download():
 
 # ---------------- RUN ----------------
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5050))
-    app.run(host="0.0.0.0", port=port)
+    app.run(host="0.0.0.0", port=5050, debug=True)

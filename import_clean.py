@@ -2,7 +2,7 @@ import pandas as pd
 import sqlite3
 from datetime import date
 
-df = pd.read_excel("/Users/vishalkirangowda/Desktop/Attendance System/MBA.xlsx")
+df = pd.read_excel("/Users/vishalkirangowda/Desktop/CIAP/Attendance System/MBA.xlsx")
 df.columns = df.columns.str.strip()
 
 today = str(date.today())
