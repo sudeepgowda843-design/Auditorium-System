@@ -238,13 +238,35 @@ def download():
         FROM students
     """, conn)
 
-    conn.close()
-
     file = "attendance.xlsx"
     df.to_excel(file, index=False)
 
+    # 🔥 RESET DATABASE AFTER DOWNLOAD
+    cursor = conn.cursor()
+    cursor.execute("""
+        UPDATE students 
+        SET check_in=NULL, check_out=NULL, remark=NULL
+    """)
+    conn.commit()
+
+    conn.close()
+
     return send_file(file, as_attachment=True)
 
+@app.route('/reset')
+def reset():
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        UPDATE students 
+        SET check_in=NULL, check_out=NULL, remark=NULL
+    """)
+
+    conn.commit()
+    conn.close()
+
+    return "✅ Database Reset Done"
 
 # ---------------- RUN ----------------
 if __name__ == "__main__":
