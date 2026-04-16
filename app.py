@@ -6,11 +6,36 @@ import os
 app = Flask(__name__)
 app.secret_key = "secret123"
 
+# 🔐 USERS DATABASE (NEW)
+USERS = {
+    "MBA": {
+        "admin": {"password": "admin123", "role": "admin"},
+        "student1": {"password": "mba123", "role": "student"},
+        "student2": {"password": "mba456", "role": "student"}
+    },
+    "BCOM": {
+        "admin": {"password": "bcom123", "role": "admin"},
+        "student1": {"password": "bcom111", "role": "student"}
+    },
+    "LAW": {
+        "admin": {"password": "law123", "role": "admin"},
+        "student1": {"password": "law111", "role": "student"}
+    },
+    "BBA": {
+        "admin": {"password": "bba123", "role": "admin"},
+        "student1": {"password": "bba111", "role": "student"}
+    },
+    "PSYCHOLOGY": {
+        "admin": {"password": "psy123", "role": "admin"},
+        "student1": {"password": "psy111", "role": "student"}
+    }
+}
+
 # 🔥 DB BASE PATH
 DB_FOLDER = "databases"
 os.makedirs(DB_FOLDER, exist_ok=True)
 
-# 🔥 AUDITORIUM CONFIG
+# 🔥 AUDITORIUM CONFIG (UNCHANGED)
 AUDITORIUM_CONFIG = {
     "1A": {
         "default_cols": 22,
@@ -71,20 +96,28 @@ def init_db(db):
     conn.close()
 
 # =========================
-# 🔐 LOGIN
+# 🔐 LOGIN (UPDATED)
 # =========================
 @app.route('/', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
-        user = request.form.get("username")
+        dept = request.form.get("department")
+        username = request.form.get("username")
         password = request.form.get("password")
 
-        if user == "admin" and password == "admin":
-            session["role"] = "admin"
-        else:
-            session["role"] = "staff"
+        dept_users = USERS.get(dept)
 
-        return redirect('/select_auditorium')
+        if dept_users and username in dept_users:
+            user = dept_users[username]
+
+            if user["password"] == password:
+                session["department"] = dept
+                session["role"] = user["role"]
+                session["username"] = username
+
+                return redirect('/select_auditorium')
+
+        return "Invalid Credentials ❌"
 
     return render_template('login.html')
 
@@ -100,25 +133,20 @@ def select_auditorium():
     return render_template('select_auditorium.html')
 
 # =========================
-# 🎯 SELECT DEPARTMENT
+# 🎯 SELECT DEPARTMENT (SIMPLIFIED)
 # =========================
-@app.route('/select_department', methods=['GET', 'POST'])
+@app.route('/select_department')
 def select_department():
-    if request.method == 'POST':
-        session["department"] = request.form.get("department")
+    db = get_db()
+    init_db(db)
 
-        db = get_db()
-        init_db(db)
-
-        if session.get("role") == "admin":
-            return redirect('/upload')
-        else:
-            return redirect('/grid')
-
-    return render_template('select_department.html')
+    if session.get("role") == "admin":
+        return redirect('/upload')
+    else:
+        return redirect('/grid')
 
 # =========================
-# 📤 UPLOAD EXCEL (ADMIN)
+# 📤 UPLOAD (ADMIN ONLY)
 # =========================
 @app.route('/upload', methods=['GET', 'POST'])
 def upload():
@@ -165,7 +193,7 @@ def upload():
     return render_template('upload.html')
 
 # =========================
-# 🎯 GRID PAGE (UPDATED)
+# 🎯 GRID
 # =========================
 @app.route('/grid')
 def grid():
@@ -180,7 +208,7 @@ def grid():
     )
 
 # =========================
-# 📡 GET ALL SEATS
+# 📡 SEATS
 # =========================
 @app.route('/seats')
 def get_seats():
@@ -199,7 +227,7 @@ def get_seats():
     ])
 
 # =========================
-# 🔍 SCAN STUDENT
+# 🔍 SCAN
 # =========================
 @app.route('/scan', methods=['POST'])
 def scan():
@@ -238,7 +266,7 @@ def scan():
     })
 
 # =========================
-# 🪑 CLICK SEAT
+# 🪑 STUDENT BY SEAT
 # =========================
 @app.route('/student/<seat>')
 def get_student(seat):
