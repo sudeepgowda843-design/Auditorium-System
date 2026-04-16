@@ -7,10 +7,8 @@
 
 <body>
 
-<!-- 🔥 WATERMARK -->
 <div class="watermark"></div>
 
-<!-- 🔥 HEADER -->
 <div class="header">
     <img src="/static/logo.png" class="logo">
     <h1>AUDITORIUM ENGAGEMENT SYSTEM</h1>
@@ -21,7 +19,6 @@
 <button onclick="scanStudent()">Scan</button>
 <button onclick="downloadExcel()">⬇ Download</button>
 
-<!-- 🔥 RESET (ADMIN ONLY) -->
 {% if session.role == 'admin' %}
 <button onclick="resetAll()" style="background:red;color:white;">Reset</button>
 {% endif %}
@@ -31,10 +28,8 @@
 <h2 id="name">-</h2>
 <h1 id="seat">--</h1>
 
-<!-- 🔥 GRID -->
 <div id="grid" class="grid"></div>
 
-<!-- 🔥 DISCIPLINE -->
 <div>
     <select id="action">
         <option>Sleeping</option>
@@ -48,27 +43,75 @@
 
 <script>
 
-// 🔥 CREATE GRID
+// 🔥 GET CURRENT AUDITORIUM FROM BACKEND
+let AUDI = "{{ session.auditorium }}";
+
+// 🔥 GRID CONFIG
+function getGridConfig(){
+    if(AUDI === "1A"){
+        return {
+            mainRows: 21,
+            cols: 22,
+            extra: [
+                {row: "V", cols: 15},
+                {row: "W", cols: 13}
+            ]
+        };
+    }
+
+    if(AUDI === "1B"){
+        return {
+            mainRows: 21,
+            cols: 22,
+            extra: [
+                {row: "V", cols: 16},
+                {row: "W", cols: 13}
+            ]
+        };
+    }
+
+    // 2A & 2B
+    return {
+        mainRows: 21,
+        cols: 22,
+        extra: []
+    };
+}
+
+// 🔥 CREATE GRID (DYNAMIC)
 function createGrid(){
     let grid = document.getElementById("grid");
     grid.innerHTML = "";
 
-    for(let r=1;r<=19;r++){
-        let rowLetter = String.fromCharCode(64+r);
+    let config = getGridConfig();
 
-        for(let c=1;c<=22;c++){
-            let seatId = `${rowLetter}${c}`;
+    // MAIN GRID
+    for(let r=1; r<=config.mainRows; r++){
+        let rowLetter = String.fromCharCode(64 + r);
 
-            let seat = document.createElement("div");
-            seat.className="seat";
-            seat.id=seatId;
-            seat.innerHTML = "<b>" + seatId + "</b>";
-
-            seat.onclick=()=>showStudent(seatId);
-
-            grid.appendChild(seat);
+        for(let c=1; c<=config.cols; c++){
+            createSeat(grid, rowLetter + c);
         }
     }
+
+    // EXTRA ROWS (V, W)
+    config.extra.forEach(row=>{
+        for(let c=1; c<=row.cols; c++){
+            createSeat(grid, row.row + c);
+        }
+    });
+}
+
+// 🔥 CREATE SINGLE SEAT
+function createSeat(grid, seatId){
+    let seat = document.createElement("div");
+    seat.className = "seat";
+    seat.id = seatId;
+    seat.innerHTML = "<b>" + seatId + "</b>";
+
+    seat.onclick = () => showStudent(seatId);
+
+    grid.appendChild(seat);
 }
 
 /////////////////////////////
@@ -79,10 +122,7 @@ let typingTimer;
 
 document.getElementById("studentId").addEventListener("input", function(){
     clearTimeout(typingTimer);
-
-    typingTimer = setTimeout(() => {
-        scanStudent();
-    }, 300);
+    typingTimer = setTimeout(scanStudent, 300);
 });
 
 /////////////////////////////
@@ -190,16 +230,13 @@ function downloadExcel(){
 }
 
 /////////////////////////////
-// 🔥 RESET FUNCTION
+// 🔥 RESET
 /////////////////////////////
 
 function resetAll(){
-    if(confirm("Are you sure you want to reset attendance?")){
-        fetch('/reset',{
-            method:'POST'
-        }).then(()=>{
-            loadSeats();
-        });
+    if(confirm("Reset attendance for this auditorium?")){
+        fetch('/reset',{ method:'POST' })
+        .then(()=> loadSeats());
     }
 }
 

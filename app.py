@@ -10,6 +10,29 @@ app.secret_key = "secret123"
 DB_FOLDER = "databases"
 os.makedirs(DB_FOLDER, exist_ok=True)
 
+# 🔥 AUDITORIUM CONFIG
+AUDITORIUM_CONFIG = {
+    "1A": {
+        "default_cols": 22,
+        "rows": list("ABCDEFGHIJKLMNOPQRSTU"),
+        "extra_rows": {"V": 15, "W": 13}
+    },
+    "1B": {
+        "default_cols": 22,
+        "rows": list("ABCDEFGHIJKLMNOPQRSTU"),
+        "extra_rows": {"V": 16, "W": 13}
+    },
+    "2A": {
+        "default_cols": 22,
+        "rows": list("ABCDEFGHIJKLMNOPQRSTU"),
+        "extra_rows": {}
+    },
+    "2B": {
+        "default_cols": 22,
+        "rows": list("ABCDEFGHIJKLMNOPQRSTU"),
+        "extra_rows": {}
+    }
+}
 
 # 🔥 GET CURRENT DB
 def get_db():
@@ -21,13 +44,11 @@ def get_db():
 
     return f"{DB_FOLDER}/{audi}_{dept}.db"
 
-
 # 🔥 NORMALIZE SEAT
 def normalize_seat(seat):
     if not seat:
         return None
     return str(seat).replace("-", "").replace(" ", "").upper()
-
 
 # 🔥 INIT DB
 def init_db(db):
@@ -49,11 +70,9 @@ def init_db(db):
     conn.commit()
     conn.close()
 
-
 # =========================
 # 🔐 LOGIN
 # =========================
-
 @app.route('/', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
@@ -62,19 +81,16 @@ def login():
 
         if user == "admin" and password == "admin":
             session["role"] = "admin"
-            return redirect('/select_auditorium')
-
         else:
             session["role"] = "staff"
-            return redirect('/select_auditorium')
+
+        return redirect('/select_auditorium')
 
     return render_template('login.html')
-
 
 # =========================
 # 🎯 SELECT AUDITORIUM
 # =========================
-
 @app.route('/select_auditorium', methods=['GET', 'POST'])
 def select_auditorium():
     if request.method == 'POST':
@@ -83,11 +99,9 @@ def select_auditorium():
 
     return render_template('select_auditorium.html')
 
-
 # =========================
 # 🎯 SELECT DEPARTMENT
 # =========================
-
 @app.route('/select_department', methods=['GET', 'POST'])
 def select_department():
     if request.method == 'POST':
@@ -103,11 +117,9 @@ def select_department():
 
     return render_template('select_department.html')
 
-
 # =========================
-# 📤 UPLOAD EXCEL (ADMIN ONLY)
+# 📤 UPLOAD EXCEL (ADMIN)
 # =========================
-
 @app.route('/upload', methods=['GET', 'POST'])
 def upload():
     if session.get("role") != "admin":
@@ -152,20 +164,24 @@ def upload():
 
     return render_template('upload.html')
 
-
 # =========================
-# 🎯 GRID PAGE
+# 🎯 GRID PAGE (UPDATED)
 # =========================
-
 @app.route('/grid')
 def grid():
-    return render_template('index.html')
+    audi = session.get("auditorium")
+    config = AUDITORIUM_CONFIG.get(audi)
 
+    return render_template(
+        'index.html',
+        rows=config["rows"],
+        default_cols=config["default_cols"],
+        extra_rows=config["extra_rows"]
+    )
 
 # =========================
 # 📡 GET ALL SEATS
 # =========================
-
 @app.route('/seats')
 def get_seats():
     db = get_db()
@@ -182,11 +198,9 @@ def get_seats():
         for r in rows
     ])
 
-
 # =========================
 # 🔍 SCAN STUDENT
 # =========================
-
 @app.route('/scan', methods=['POST'])
 def scan():
     data = request.get_json()
@@ -223,11 +237,9 @@ def scan():
         "status": new_status
     })
 
-
 # =========================
 # 🪑 CLICK SEAT
 # =========================
-
 @app.route('/student/<seat>')
 def get_student(seat):
     db = get_db()
@@ -254,11 +266,9 @@ def get_student(seat):
     else:
         return jsonify({"error": "Not found"})
 
-
 # =========================
 # ⚠️ DISCIPLINE
 # =========================
-
 @app.route('/discipline', methods=['POST'])
 def discipline():
     data = request.get_json()
@@ -279,11 +289,9 @@ def discipline():
 
     return jsonify({"success": True})
 
-
 # =========================
 # 📥 DOWNLOAD
 # =========================
-
 @app.route('/download')
 def download():
     db = get_db()
@@ -298,11 +306,9 @@ def download():
 
     return send_file(file_path, as_attachment=True)
 
-
 # =========================
-# 🔄 RESET (ADMIN ONLY)
+# 🔄 RESET
 # =========================
-
 @app.route('/reset', methods=['POST'])
 def reset():
     if session.get("role") != "admin":
@@ -319,20 +325,16 @@ def reset():
 
     return jsonify({"success": True})
 
-
 # =========================
 # 🚪 LOGOUT
 # =========================
-
 @app.route('/logout')
 def logout():
     session.clear()
     return redirect('/')
 
-
 # =========================
 # 🚀 RUN
 # =========================
-
 if __name__ == '__main__':
     app.run(debug=True)
