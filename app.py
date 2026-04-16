@@ -16,32 +16,24 @@ USERS = {
     "staff2": {"password": "123", "role": "staff"}
 }
 
-# ---------------- DB PATH ----------------
+# ---------------- BASE PATH ----------------
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DB_PATH = os.path.join(BASE_DIR, "students.db")
-
-# 🔥 FLAG (IMPORTANT)
-db_loaded = False
 
 
-# ---------------- LOAD EXCEL INTO DB ----------------
-def load_excel_to_db():
-    excel_path = os.path.join(BASE_DIR, "MBA.xlsx")
+# ---------------- DB CREATOR ----------------
+def get_db():
+    auditorium = session.get('auditorium')
+    department = session.get('department')
 
-    print("📂 Looking for Excel at:", excel_path)
+    db_name = f"{auditorium}_{department}.db"
+    db_path = os.path.join(BASE_DIR, db_name)
 
-    if not os.path.exists(excel_path):
-        print("❌ MBA.xlsx NOT FOUND")
-        return
-
-    conn = sqlite3.connect(DB_PATH)
+    # Create table if not exists
+    conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
 
-    # RESET TABLE
-    cursor.execute("DROP TABLE IF EXISTS students")
-
     cursor.execute("""
-        CREATE TABLE students (
+        CREATE TABLE IF NOT EXISTS students (
             id TEXT PRIMARY KEY,
             srn TEXT,
             name TEXT,
@@ -53,36 +45,10 @@ def load_excel_to_db():
         )
     """)
 
-    df = pd.read_excel(excel_path)
-
-    print("📊 Loading Fresh Data...")
-
-    for _, row in df.iterrows():
-        cursor.execute("""
-            INSERT INTO students (id, srn, name, section, seat)
-            VALUES (?, ?, ?, ?, ?)
-        """, (
-            str(row.get('PRN', '')).strip(),
-            str(row.get('SRN', '')).strip(),
-            str(row.get('Name', '')).strip(),
-            str(row.get('Section', '')).strip(),
-            str(row.get('Seat Number', '')).replace("-", "").strip()
-        ))
-
     conn.commit()
     conn.close()
 
-    print("✅ Fresh Data Loaded Successfully")
-
-
-# 🔥 RUN ONLY ON FIRST REQUEST (Flask 3 FIX)
-@app.before_request
-def initialize_once():
-    global db_loaded
-    if not db_loaded:
-        print("🔄 First request → loading database...")
-        load_excel_to_db()
-        db_loaded = True
+    return db_path
 
 
 # ---------------- LOGIN ----------------
@@ -95,11 +61,25 @@ def login():
         if user in USERS and USERS[user]["password"] == pwd:
             session['user'] = user
             session['role'] = USERS[user]["role"]
-            return redirect('/')
+            return redirect('/select')
 
         return "Invalid Credentials"
 
     return render_template('login.html')
+
+
+# ---------------- SELECT AUDITORIUM ----------------
+@app.route('/select', methods=['GET', 'POST'])
+def select():
+    if 'user' not in session:
+        return redirect('/login')
+
+    if request.method == 'POST':
+        session['auditorium'] = request.form['auditorium']
+        session['department'] = request.form['department']
+        return redirect('/')
+
+    return render_template('select.html')
 
 
 # ---------------- LOGOUT ----------------
@@ -114,7 +94,68 @@ def logout():
 def home():
     if 'user' not in session:
         return redirect('/login')
-    return render_template('index.html', role=session['role'])
+
+    if 'auditorium' not in session:
+        return redirect('/select')
+
+    db = get_db()
+    conn = sqlite3.connect(db)
+    cursor = conn.cursor()
+
+    cursor.execute("SELECT COUNT(*) FROM students")
+    count = cursor.fetchone()[0]
+    conn.close()
+
+    # 🚨 Force upload if empty
+    if count == 0:
+        return redirect('/upload-page')
+
+    return render_template(
+        'index.html',
+        role=session['role'],
+        auditorium=session['auditorium'],
+        department=session['department']
+    )
+
+
+# ---------------- UPLOAD PAGE ----------------
+@app.route('/upload-page')
+def upload_page():
+    return render_template('upload.html')
+
+
+# ---------------- UPLOAD EXCEL ----------------
+@app.route('/upload', methods=['POST'])
+def upload():
+    file = request.files['file']
+
+    if not file:
+        return "No file uploaded"
+
+    df = pd.read_excel(file)
+
+    conn = sqlite3.connect(get_db())
+    cursor = conn.cursor()
+
+    # Clear old data
+    cursor.execute("DELETE FROM students")
+
+    for _, row in df.iterrows():
+        cursor.execute("""
+            INSERT INTO students (id, srn, name, section, seat)
+            VALUES (?, ?, ?, ?, ?)
+        """, (
+            str(row['id']),
+            str(row['srn']),
+            row['name'],
+            row['section'],
+            str(row['seat']).replace("-", "").strip()
+        ))
+
+    conn.commit()
+    conn.close()
+
+    return redirect('/')
 
 
 # ---------------- SCAN ----------------
@@ -125,7 +166,7 @@ def scan():
 
     time_now = datetime.now().strftime("%H:%M:%S")
 
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(get_db())
     cursor = conn.cursor()
 
     cursor.execute("""
@@ -143,24 +184,26 @@ def scan():
 
     if not check_in:
         cursor.execute("UPDATE students SET check_in=? WHERE id=?", (time_now, student_id))
-        conn.commit()
-        conn.close()
-        return jsonify({"name": name, "seat": seat, "status": "IN"})
+        status = "IN"
 
     elif not check_out:
         cursor.execute("UPDATE students SET check_out=? WHERE id=?", (time_now, student_id))
-        conn.commit()
+        status = "OUT"
+
+    else:
         conn.close()
-        return jsonify({"name": name, "seat": seat, "status": "OUT"})
+        return jsonify({"status": "DONE"})
 
+    conn.commit()
     conn.close()
-    return jsonify({"status": "DONE"})
+
+    return jsonify({"name": name, "seat": seat, "status": status})
 
 
-# ---------------- SEATS ----------------
+# ---------------- LOAD SEATS ----------------
 @app.route('/seats')
 def seats():
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(get_db())
     cursor = conn.cursor()
 
     cursor.execute("SELECT seat, check_in, check_out FROM students")
@@ -187,10 +230,10 @@ def seats():
     return jsonify(result)
 
 
-# ---------------- STUDENT ----------------
+# ---------------- GET STUDENT ----------------
 @app.route('/student/<seat>')
 def get_student(seat):
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(get_db())
     cursor = conn.cursor()
 
     cursor.execute("SELECT name, remark FROM students WHERE seat=?", (seat,))
@@ -214,7 +257,7 @@ def discipline():
     seat = data.get('seat')
     action = data.get('action')
 
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(get_db())
     cursor = conn.cursor()
 
     cursor.execute("UPDATE students SET remark=? WHERE seat=?", (action, seat))
@@ -228,7 +271,7 @@ def discipline():
 # ---------------- DOWNLOAD ----------------
 @app.route('/download')
 def download():
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(get_db())
 
     df = pd.read_sql_query("""
         SELECT id as PRN, srn as SRN, name as Name, 
@@ -238,36 +281,29 @@ def download():
         FROM students
     """, conn)
 
-    file = "attendance.xlsx"
-    df.to_excel(file, index=False)
-
-    # 🔥 RESET DATABASE AFTER DOWNLOAD
-    cursor = conn.cursor()
-    cursor.execute("""
-        UPDATE students 
-        SET check_in=NULL, check_out=NULL, remark=NULL
-    """)
-    conn.commit()
-
     conn.close()
+
+    file = f"{session['auditorium']}_{session['department']}.xlsx"
+    df.to_excel(file, index=False)
 
     return send_file(file, as_attachment=True)
 
+
+# ---------------- RESET ----------------
 @app.route('/reset')
 def reset():
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(get_db())
     cursor = conn.cursor()
 
-    cursor.execute("""
-        UPDATE students 
-        SET check_in=NULL, check_out=NULL, remark=NULL
-    """)
+    cursor.execute("DELETE FROM students")
 
     conn.commit()
     conn.close()
 
-    return "✅ Database Reset Done"
+    return redirect('/upload-page')
+
 
 # ---------------- RUN ----------------
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5050, debug=True)
+    port = int(os.environ.get("PORT", 5050))
+    app.run(host="0.0.0.0", port=port)
