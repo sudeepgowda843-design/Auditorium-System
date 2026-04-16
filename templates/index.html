@@ -15,6 +15,8 @@
 </div>
 
 <!-- 🔥 CONTROLS -->
+<div class="center-box" style="width:90%; max-width:900px;">
+
 <input id="studentId" placeholder="Scan ID..." autofocus>
 <button onclick="scanStudent()">Scan</button>
 <button onclick="downloadExcel()">⬇ Download</button>
@@ -28,9 +30,16 @@
 <h2 id="name">-</h2>
 <h1 id="seat">--</h1>
 
+</div>
+
+<!-- 🔥 GRID -->
 <div id="grid" class="grid"></div>
 
-<div>
+<!-- 🔥 TOOLTIP (HOVER PREVIEW) -->
+<div id="tooltip" class="tooltip"></div>
+
+<!-- 🔥 DISCIPLINE -->
+<div class="center-box" style="width:300px;">
     <select id="action">
         <option>Sleeping</option>
         <option>Using Phone</option>
@@ -43,10 +52,13 @@
 
 <script>
 
-// 🔥 GET CURRENT AUDITORIUM FROM BACKEND
+// 🔥 CURRENT AUDITORIUM
 let AUDI = "{{ session.auditorium }}";
 
+/////////////////////////////
 // 🔥 GRID CONFIG
+/////////////////////////////
+
 function getGridConfig(){
     if(AUDI === "1A"){
         return {
@@ -70,7 +82,6 @@ function getGridConfig(){
         };
     }
 
-    // 2A & 2B
     return {
         mainRows: 21,
         cols: 22,
@@ -78,14 +89,16 @@ function getGridConfig(){
     };
 }
 
-// 🔥 CREATE GRID (DYNAMIC)
+/////////////////////////////
+// 🔥 CREATE GRID (OPTIMIZED)
+/////////////////////////////
+
 function createGrid(){
     let grid = document.getElementById("grid");
     grid.innerHTML = "";
 
     let config = getGridConfig();
 
-    // MAIN GRID
     for(let r=1; r<=config.mainRows; r++){
         let rowLetter = String.fromCharCode(64 + r);
 
@@ -94,7 +107,6 @@ function createGrid(){
         }
     }
 
-    // EXTRA ROWS (V, W)
     config.extra.forEach(row=>{
         for(let c=1; c<=row.cols; c++){
             createSeat(grid, row.row + c);
@@ -102,16 +114,50 @@ function createGrid(){
     });
 }
 
-// 🔥 CREATE SINGLE SEAT
+/////////////////////////////
+// 🔥 CREATE SEAT
+/////////////////////////////
+
 function createSeat(grid, seatId){
     let seat = document.createElement("div");
     seat.className = "seat";
     seat.id = seatId;
     seat.innerHTML = "<b>" + seatId + "</b>";
 
+    // CLICK
     seat.onclick = () => showStudent(seatId);
 
+    // 🔥 HOVER PREVIEW
+    seat.onmouseenter = (e) => showTooltip(e, seatId);
+    seat.onmouseleave = hideTooltip;
+
     grid.appendChild(seat);
+}
+
+/////////////////////////////
+// 🔥 TOOLTIP (NEW)
+/////////////////////////////
+
+async function showTooltip(e, seat){
+    let res = await fetch('/student/'+seat);
+    let data = await res.json();
+
+    if(data.error) return;
+
+    let tooltip = document.getElementById("tooltip");
+
+    tooltip.style.display = "block";
+    tooltip.style.left = (e.pageX + 10) + "px";
+    tooltip.style.top = (e.pageY + 10) + "px";
+
+    tooltip.innerHTML = `
+        <b>${data.name}</b><br>
+        ${data.srn || ""}
+    `;
+}
+
+function hideTooltip(){
+    document.getElementById("tooltip").style.display = "none";
 }
 
 /////////////////////////////
@@ -159,22 +205,19 @@ async function scanStudent(){
 }
 
 /////////////////////////////
-// 🔥 LOAD SEATS
+// 🔥 LOAD SEATS (FIXED - NO FLICKER)
 /////////////////////////////
 
 async function loadSeats(){
     let res = await fetch('/seats');
     let data = await res.json();
 
-    document.querySelectorAll('.seat').forEach(s=>{
-        s.classList.remove("green","red");
-        s.innerHTML = "<b>" + s.id + "</b>";
-    });
-
     data.forEach(s=>{
         let seat = document.getElementById(s.seat);
 
         if(seat){
+            seat.classList.remove("green","red");
+
             if(s.status === "IN") seat.classList.add("green");
             if(s.status === "OUT") seat.classList.add("red");
 

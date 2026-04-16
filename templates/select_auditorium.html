@@ -1,29 +1,24 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Select Auditorium</title>
+<link rel="stylesheet" href="/static/style.css">
 </head>
+
 <body>
 
-<h2>Select Auditorium</h2>
+<div class="center-box">
+    <h2 style="color:white;">Select Auditorium</h2>
 
-<form method="POST">
-
-    <select name="auditorium" required>
-        <option value="">-- Select Auditorium --</option>
-
-        <option value="1A">Auditorium 1A</option>
-        <option value="1B">Auditorium 1B</option>
-        <option value="2A">Auditorium 2A</option>
-        <option value="2B">Auditorium 2B</option>
-
-    </select>
-
-    <br><br>
-
-    <button type="submit">Next</button>
-
-</form>
+    <form method="POST">
+        <select name="auditorium">
+            <option>1A</option>
+            <option>1B</option>
+            <option>2A</option>
+            <option>2B</option>
+        </select>
+        <button>Next</button>
+    </form>
+</div>
 
 </body>
 </html>
