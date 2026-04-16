@@ -1,9 +1,29 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Select Auditorium</title>
+</head>
+<body>
+
+<h2>Select Auditorium</h2>
+
 <form method="POST">
-    <h2>Select Auditorium</h2>
-    <select name="auditorium">
-        {% for a in auditoriums %}
-        <option value="{{a}}">{{a}}</option>
-        {% endfor %}
+
+    <select name="auditorium" required>
+        <option value="">-- Select Auditorium --</option>
+
+        <option value="1A">Auditorium 1A</option>
+        <option value="1B">Auditorium 1B</option>
+        <option value="2A">Auditorium 2A</option>
+        <option value="2B">Auditorium 2B</option>
+
     </select>
+
+    <br><br>
+
     <button type="submit">Next</button>
+
 </form>
+
+</body>
+</html>
