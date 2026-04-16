@@ -1,24 +1,35 @@
-from flask import Flask, render_template, request, redirect, session, jsonify, send_file
+from flask import Flask, render_template, request, redirect, jsonify, session, send_file
 import sqlite3
 import pandas as pd
+import os
 
 app = Flask(__name__)
 app.secret_key = "secret123"
 
-AUDITORIUMS = ["1A", "1B", "2A", "2B"]
+# 🔥 DB BASE PATH
+DB_FOLDER = "databases"
+os.makedirs(DB_FOLDER, exist_ok=True)
 
-# ======================
-# HELPERS
-# ======================
 
-def normalize_seat(seat):
-    return str(seat).strip().upper().replace(" ", "").replace("-", "")
-
+# 🔥 GET CURRENT DB
 def get_db():
-    if "auditorium" not in session or "department" not in session:
-        return None
-    return f"{session['auditorium']}_{session['department']}.db"
+    audi = session.get("auditorium")
+    dept = session.get("department")
 
+    if not audi or not dept:
+        return None
+
+    return f"{DB_FOLDER}/{audi}_{dept}.db"
+
+
+# 🔥 NORMALIZE SEAT
+def normalize_seat(seat):
+    if not seat:
+        return None
+    return str(seat).replace("-", "").replace(" ", "").upper()
+
+
+# 🔥 INIT DB
 def init_db(db):
     conn = sqlite3.connect(db)
     cursor = conn.cursor()
@@ -30,79 +41,76 @@ def init_db(db):
         name TEXT,
         section TEXT,
         seat TEXT PRIMARY KEY,
-        status TEXT DEFAULT 'absent'
+        status TEXT DEFAULT 'OUT',
+        remark TEXT
     )
     """)
 
     conn.commit()
     conn.close()
 
-# ======================
-# LOGIN
-# ======================
+
+# =========================
+# 🔐 LOGIN
+# =========================
 
 @app.route('/', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
-        username = request.form['username']
-        password = request.form['password']
+        user = request.form.get("username")
+        password = request.form.get("password")
 
-        session.clear()
-
-        if username == "admin" and password == "admin":
-            session['role'] = 'admin'
-            return redirect('/select_auditorium')
-
-        elif username == "staff" and password == "staff":
-            session['role'] = 'staff'
+        if user == "admin" and password == "admin":
+            session["role"] = "admin"
             return redirect('/select_auditorium')
 
         else:
-            return "Invalid Login"
+            session["role"] = "staff"
+            return redirect('/select_auditorium')
 
     return render_template('login.html')
 
-# ======================
-# SELECT AUDITORIUM
-# ======================
+
+# =========================
+# 🎯 SELECT AUDITORIUM
+# =========================
 
 @app.route('/select_auditorium', methods=['GET', 'POST'])
 def select_auditorium():
-    if 'role' not in session:
-        return redirect('/')
-
     if request.method == 'POST':
-        session['auditorium'] = request.form['auditorium']
+        session["auditorium"] = request.form.get("auditorium")
         return redirect('/select_department')
 
-    return render_template('select_auditorium.html', auditoriums=AUDITORIUMS)
+    return render_template('select_auditorium.html')
 
-# ======================
-# SELECT DEPARTMENT
-# ======================
+
+# =========================
+# 🎯 SELECT DEPARTMENT
+# =========================
 
 @app.route('/select_department', methods=['GET', 'POST'])
 def select_department():
-    if 'role' not in session:
-        return redirect('/')
-
     if request.method == 'POST':
-        session['department'] = request.form['department']
+        session["department"] = request.form.get("department")
 
-        if session['role'] == 'admin':
+        db = get_db()
+        init_db(db)
+
+        if session.get("role") == "admin":
             return redirect('/upload')
         else:
             return redirect('/grid')
 
     return render_template('select_department.html')
 
-# ======================
-# UPLOAD (ADMIN ONLY)
-# ======================
+
+# =========================
+# 📤 UPLOAD EXCEL (ADMIN ONLY)
+# =========================
 
 @app.route('/upload', methods=['GET', 'POST'])
 def upload():
-    if session.get('role') != 'admin':
+    if session.get("role") != "admin":
         return redirect('/grid')
 
     db = get_db()
@@ -110,10 +118,12 @@ def upload():
         return redirect('/select_auditorium')
 
     if request.method == 'POST':
-        file = request.files['file']
-        df = pd.read_excel(file)
+        file = request.files.get('file')
 
-        init_db(db)
+        if not file or file.filename == '':
+            return "Upload valid Excel"
+
+        df = pd.read_excel(file)
 
         conn = sqlite3.connect(db)
         cursor = conn.cursor()
@@ -124,14 +134,15 @@ def upload():
             seat = normalize_seat(row.get('seat') or row.get('Seat'))
 
             cursor.execute("""
-                INSERT INTO students (id, srn, name, section, seat)
-                VALUES (?, ?, ?, ?, ?)
+                INSERT INTO students (id, srn, name, section, seat, status)
+                VALUES (?, ?, ?, ?, ?, ?)
             """, (
                 str(row.get('id') or row.get('PRN')),
                 str(row.get('srn') or row.get('SRN')),
                 row.get('name') or row.get('Name'),
                 row.get('section') or row.get('Section'),
-                seat
+                seat,
+                "OUT"
             ))
 
         conn.commit()
@@ -141,35 +152,83 @@ def upload():
 
     return render_template('upload.html')
 
-# ======================
-# GRID
-# ======================
+
+# =========================
+# 🎯 GRID PAGE
+# =========================
 
 @app.route('/grid')
 def grid():
+    return render_template('index.html')
+
+
+# =========================
+# 📡 GET ALL SEATS
+# =========================
+
+@app.route('/seats')
+def get_seats():
     db = get_db()
-    if not db:
-        return redirect('/')
-
-    init_db(db)
-
     conn = sqlite3.connect(db)
     cursor = conn.cursor()
 
-    cursor.execute("SELECT seat, status FROM students")
-    data = cursor.fetchall()
+    cursor.execute("SELECT seat, name, status FROM students")
+    rows = cursor.fetchall()
 
     conn.close()
 
-    seats = {seat: status for seat, status in data}
+    return jsonify([
+        {"seat": r[0], "name": r[1], "status": r[2]}
+        for r in rows
+    ])
 
-    return render_template('index.html', seats=seats)
 
-# ======================
-# GET STUDENT
-# ======================
+# =========================
+# 🔍 SCAN STUDENT
+# =========================
 
-@app.route('/get_student/<seat>')
+@app.route('/scan', methods=['POST'])
+def scan():
+    data = request.get_json()
+    student_id = data.get("student_id")
+
+    db = get_db()
+    conn = sqlite3.connect(db)
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        SELECT name, seat, status 
+        FROM students 
+        WHERE srn=? OR id=?
+    """, (student_id, student_id))
+
+    student = cursor.fetchone()
+
+    if not student:
+        conn.close()
+        return jsonify({"error": "Student not found"})
+
+    new_status = "IN" if student[2] != "IN" else "OUT"
+
+    cursor.execute("""
+        UPDATE students SET status=? WHERE seat=?
+    """, (new_status, student[1]))
+
+    conn.commit()
+    conn.close()
+
+    return jsonify({
+        "name": student[0],
+        "seat": student[1],
+        "status": new_status
+    })
+
+
+# =========================
+# 🪑 CLICK SEAT
+# =========================
+
+@app.route('/student/<seat>')
 def get_student(seat):
     db = get_db()
     conn = sqlite3.connect(db)
@@ -177,56 +236,79 @@ def get_student(seat):
 
     seat = normalize_seat(seat)
 
-    cursor.execute("SELECT name, srn, status FROM students WHERE seat=?", (seat,))
-    student = cursor.fetchone()
+    cursor.execute("""
+        SELECT name, srn, status, remark 
+        FROM students WHERE seat=?
+    """, (seat,))
 
+    student = cursor.fetchone()
     conn.close()
 
     if student:
         return jsonify({
             "name": student[0],
             "srn": student[1],
-            "status": student[2]
+            "status": student[2],
+            "remark": student[3]
         })
     else:
         return jsonify({"error": "Not found"})
 
-# ======================
-# MARK
-# ======================
 
-@app.route('/mark/<seat>', methods=['POST'])
-def mark(seat):
+# =========================
+# ⚠️ DISCIPLINE
+# =========================
+
+@app.route('/discipline', methods=['POST'])
+def discipline():
+    data = request.get_json()
+
+    seat = normalize_seat(data.get("seat"))
+    action = data.get("action")
+
     db = get_db()
     conn = sqlite3.connect(db)
     cursor = conn.cursor()
 
-    seat = normalize_seat(seat)
-
     cursor.execute("""
-        UPDATE students
-        SET status = CASE
-            WHEN status='present' THEN 'absent'
-            ELSE 'present'
-        END
-        WHERE seat=?
-    """, (seat,))
+        UPDATE students SET remark=? WHERE seat=?
+    """, (action, seat))
 
     conn.commit()
     conn.close()
 
     return jsonify({"success": True})
 
-# ======================
-# RESET (ADMIN ONLY)
-# ======================
+
+# =========================
+# 📥 DOWNLOAD
+# =========================
+
+@app.route('/download')
+def download():
+    db = get_db()
+    conn = sqlite3.connect(db)
+
+    df = pd.read_sql_query("SELECT * FROM students", conn)
+
+    file_path = "attendance.xlsx"
+    df.to_excel(file_path, index=False)
+
+    conn.close()
+
+    return send_file(file_path, as_attachment=True)
+
+
+# =========================
+# 🔄 RESET (ADMIN ONLY)
+# =========================
+
 @app.route('/reset', methods=['POST'])
 def reset():
-    if session.get('role') != 'admin':
+    if session.get("role") != "admin":
         return jsonify({"error": "Unauthorized"})
 
     db = get_db()
-
     conn = sqlite3.connect(db)
     cursor = conn.cursor()
 
@@ -237,16 +319,20 @@ def reset():
 
     return jsonify({"success": True})
 
-# ======================
-# LOGOUT
-# ======================
+
+# =========================
+# 🚪 LOGOUT
+# =========================
 
 @app.route('/logout')
 def logout():
     session.clear()
     return redirect('/')
 
-# ======================
+
+# =========================
+# 🚀 RUN
+# =========================
 
 if __name__ == '__main__':
     app.run(debug=True)
