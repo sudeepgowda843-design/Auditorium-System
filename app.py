@@ -9,18 +9,17 @@ app.secret_key = 'supersecretkey'
 
 print("🚀 System Ready")
 
-# ---------------- LOGIN USERS ----------------
+# ---------------- USERS ----------------
 USERS = {
     "admin": {"password": "admin123", "role": "admin"},
     "staff1": {"password": "123", "role": "staff"},
     "staff2": {"password": "123", "role": "staff"}
 }
 
-# ---------------- BASE DIR ----------------
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 
-# ---------------- GET DB (Dynamic) ----------------
+# ---------------- DATABASE ----------------
 def get_db():
     auditorium = session.get('auditorium')
     department = session.get('department')
@@ -29,12 +28,9 @@ def get_db():
         return None
 
     db_name = f"{auditorium}_{department}.db"
-    return os.path.join(BASE_DIR, db_name)
+    db_path = os.path.join(BASE_DIR, db_name)
 
-
-# ---------------- CREATE TABLE ----------------
-def init_db(db_path):
-    conn = sqlite3.connect(db_path, check_same_thread=False)
+    conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
 
     cursor.execute("""
@@ -53,13 +49,15 @@ def init_db(db_path):
     conn.commit()
     conn.close()
 
+    return db_path
 
-# ---------------- FORCE LOGIN ----------------
+
+# ---------------- LOGIN CHECK ----------------
 @app.before_request
 def check_login():
-    allowed_routes = ['login', 'static']
+    allowed = ['login', 'static']
 
-    if request.endpoint not in allowed_routes:
+    if request.endpoint not in allowed:
         if 'user' not in session:
             return redirect('/login')
 
@@ -72,9 +70,11 @@ def login():
         pwd = request.form['password']
 
         if user in USERS and USERS[user]["password"] == pwd:
+            session.clear()
             session['user'] = user
             session['role'] = USERS[user]["role"]
-            return redirect('/select')
+
+            return redirect('/select_auditorium')
 
         return "Invalid Credentials"
 
@@ -95,32 +95,35 @@ def home():
 
 
 # ---------------- SELECT AUDITORIUM ----------------
-@app.route('/select', methods=['GET', 'POST'])
-def select():
+@app.route('/select_auditorium', methods=['GET', 'POST'])
+def select_auditorium():
     if request.method == 'POST':
         session['auditorium'] = request.form['auditorium']
-        return redirect('/department')
+        return redirect('/select_department')
 
     return render_template('select_auditorium.html')
 
 
 # ---------------- SELECT DEPARTMENT ----------------
-@app.route('/department', methods=['GET', 'POST'])
-def department():
+@app.route('/select_department', methods=['GET', 'POST'])
+def select_department():
     if request.method == 'POST':
         session['department'] = request.form['department']
 
         db = get_db()
-        init_db(db)
-
-        return redirect('/upload')
+        if db:
+            return redirect('/upload')
 
     return render_template('select_department.html')
 
 
-# ---------------- UPLOAD EXCEL ----------------
+# ---------------- UPLOAD ----------------
 @app.route('/upload', methods=['GET', 'POST'])
 def upload():
+    db = get_db()
+    if not db:
+        return redirect('/select_auditorium')
+
     if request.method == 'POST':
         file = request.files.get('file')
 
@@ -129,11 +132,9 @@ def upload():
 
         df = pd.read_excel(file)
 
-        db = get_db()
         conn = sqlite3.connect(db, check_same_thread=False)
         cursor = conn.cursor()
 
-        # Clear previous data
         cursor.execute("DELETE FROM students")
 
         for _, row in df.iterrows():
@@ -156,10 +157,18 @@ def upload():
     return render_template('upload.html')
 
 
-# ---------------- GRID PAGE ----------------
+# ---------------- GRID ----------------
 @app.route('/grid')
 def grid():
-    return render_template('index.html', role=session.get('role'))
+    if not session.get('auditorium') or not session.get('department'):
+        return redirect('/select_auditorium')
+
+    return render_template(
+        'index.html',
+        role=session.get('role'),
+        auditorium=session.get('auditorium'),
+        department=session.get('department')
+    )
 
 
 # ---------------- SCAN ----------------
@@ -192,25 +201,27 @@ def scan():
 
     if not check_in:
         cursor.execute("UPDATE students SET check_in=? WHERE id=?", (time_now, student_id))
-        conn.commit()
-        conn.close()
-        return jsonify({"name": name, "seat": seat, "status": "IN"})
+        status = "IN"
 
     elif not check_out:
         cursor.execute("UPDATE students SET check_out=? WHERE id=?", (time_now, student_id))
-        conn.commit()
+        status = "OUT"
+
+    else:
         conn.close()
-        return jsonify({"name": name, "seat": seat, "status": "OUT"})
+        return jsonify({"status": "DONE"})
 
+    conn.commit()
     conn.close()
-    return jsonify({"status": "DONE"})
+
+    return jsonify({"name": name, "seat": seat, "status": status})
 
 
-# ---------------- LOAD SEATS ----------------
+# ---------------- SEATS ----------------
 @app.route('/seats')
 def seats():
     db = get_db()
-    conn = sqlite3.connect(db, check_same_thread=False)
+    conn = sqlite3.connect(db)
     cursor = conn.cursor()
 
     cursor.execute("SELECT seat, check_in, check_out FROM students")
@@ -237,46 +248,7 @@ def seats():
     return jsonify(result)
 
 
-# ---------------- GET STUDENT ----------------
-@app.route('/student/<seat>')
-def get_student(seat):
-    db = get_db()
-    conn = sqlite3.connect(db, check_same_thread=False)
-    cursor = conn.cursor()
-
-    cursor.execute("SELECT name, remark FROM students WHERE seat=?", (seat,))
-    student = cursor.fetchone()
-    conn.close()
-
-    if not student:
-        return jsonify({"error": "No student"})
-
-    return jsonify({
-        "name": student[0],
-        "seat": seat,
-        "remark": student[1]
-    })
-
-
-# ---------------- DISCIPLINE ----------------
-@app.route('/discipline', methods=['POST'])
-def discipline():
-    data = request.get_json()
-    seat = data.get('seat')
-    action = data.get('action')
-
-    db = get_db()
-    conn = sqlite3.connect(db, check_same_thread=False)
-    cursor = conn.cursor()
-
-    cursor.execute("UPDATE students SET remark=? WHERE seat=?", (action, seat))
-    conn.commit()
-    conn.close()
-
-    return jsonify({"status": "ok"})
-
-
-# ---------------- DOWNLOAD + RESET ----------------
+# ---------------- DOWNLOAD ----------------
 @app.route('/download')
 def download():
     db = get_db()
@@ -292,15 +264,8 @@ def download():
 
     conn.close()
 
-    file = "attendance.xlsx"
+    file = f"{session.get('auditorium')}_{session.get('department')}.xlsx"
     df.to_excel(file, index=False)
-
-    # RESET AFTER DOWNLOAD
-    conn = sqlite3.connect(db)
-    cursor = conn.cursor()
-    cursor.execute("UPDATE students SET check_in=NULL, check_out=NULL, remark=NULL")
-    conn.commit()
-    conn.close()
 
     return send_file(file, as_attachment=True)
 
