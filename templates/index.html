@@ -13,13 +13,19 @@
 <!-- 🔥 HEADER -->
 <div class="header">
     <img src="/static/logo.png" class="logo">
-    <h1>AUDITORIUM SYSTEM</h1>
+    <h1>AUDITORIUM ENGAGEMENT SYSTEM</h1>
 </div>
 
 <!-- 🔥 CONTROLS -->
 <input id="studentId" placeholder="Scan ID..." autofocus>
 <button onclick="scanStudent()">Scan</button>
 <button onclick="downloadExcel()">⬇ Download</button>
+
+<!-- 🔥 RESET (ADMIN ONLY) -->
+{% if session.role == 'admin' %}
+<button onclick="resetAll()" style="background:red;color:white;">Reset</button>
+{% endif %}
+
 <button onclick="logout()">Logout</button>
 
 <h2 id="name">-</h2>
@@ -66,7 +72,7 @@ function createGrid(){
 }
 
 /////////////////////////////
-// 🔥 AUTO SCAN (NO BUTTON)
+// 🔥 AUTO SCAN
 /////////////////////////////
 
 let typingTimer;
@@ -113,14 +119,13 @@ async function scanStudent(){
 }
 
 /////////////////////////////
-// 🔥 LOAD SEATS + SHOW NAME
+// 🔥 LOAD SEATS
 /////////////////////////////
 
 async function loadSeats(){
     let res = await fetch('/seats');
     let data = await res.json();
 
-    // RESET
     document.querySelectorAll('.seat').forEach(s=>{
         s.classList.remove("green","red");
         s.innerHTML = "<b>" + s.id + "</b>";
@@ -133,7 +138,6 @@ async function loadSeats(){
             if(s.status === "IN") seat.classList.add("green");
             if(s.status === "OUT") seat.classList.add("red");
 
-            // 🔥 SHOW NAME
             seat.innerHTML = `<b>${s.seat}</b><br>${s.name || ""}`;
         }
     });
@@ -183,6 +187,20 @@ function markDiscipline(){
 
 function downloadExcel(){
     window.location.href="/download";
+}
+
+/////////////////////////////
+// 🔥 RESET FUNCTION
+/////////////////////////////
+
+function resetAll(){
+    if(confirm("Are you sure you want to reset attendance?")){
+        fetch('/reset',{
+            method:'POST'
+        }).then(()=>{
+            loadSeats();
+        });
+    }
 }
 
 /////////////////////////////

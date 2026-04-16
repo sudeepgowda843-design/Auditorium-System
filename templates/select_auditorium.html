@@ -1,10 +1,9 @@
-<h2>Select Auditorium</h2>
 <form method="POST">
+    <h2>Select Auditorium</h2>
     <select name="auditorium">
-        <option value="1A">1A</option>
-        <option value="1B">1B</option>
-        <option value="2A">2A</option>
-        <option value="2B">2B</option>
+        {% for a in auditoriums %}
+        <option value="{{a}}">{{a}}</option>
+        {% endfor %}
     </select>
     <button type="submit">Next</button>
 </form>
