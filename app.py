@@ -6,7 +6,7 @@ import os
 app = Flask(__name__)
 app.secret_key = "secret123"
 
-# 🔐 USERS DATABASE (NEW)
+# 🔐 USERS DATABASE
 USERS = {
     "MBA": {
         "admin": {"password": "pesu@2026", "role": "admin"},
@@ -39,7 +39,7 @@ USERS = {
 DB_FOLDER = "databases"
 os.makedirs(DB_FOLDER, exist_ok=True)
 
-# 🔥 AUDITORIUM CONFIG (UNCHANGED)
+# 🔥 AUDITORIUM CONFIG
 AUDITORIUM_CONFIG = {
     "1A": {
         "default_cols": 22,
@@ -79,18 +79,18 @@ def normalize_seat(seat):
         return None
     return str(seat).replace("-", "").replace(" ", "").upper()
 
-# 🔥 INIT DB
+# 🔥 INIT DB (UPDATED COLUMN NAMES)
 def init_db(db):
     conn = sqlite3.connect(db)
     cursor = conn.cursor()
 
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS students (
-        id TEXT,
-        srn TEXT,
+        PRN TEXT,
+        SRN TEXT,
         name TEXT,
-        section TEXT,
-        seat TEXT PRIMARY KEY,
+        Section TEXT,
+        Seat TEXT PRIMARY KEY,
         status TEXT DEFAULT 'OUT',
         remark TEXT
     )
@@ -100,7 +100,7 @@ def init_db(db):
     conn.close()
 
 # =========================
-# 🔐 LOGIN (UPDATED)
+# 🔐 LOGIN
 # =========================
 @app.route('/', methods=['GET', 'POST'])
 def login():
@@ -137,7 +137,7 @@ def select_auditorium():
     return render_template('select_auditorium.html')
 
 # =========================
-# 🎯 SELECT DEPARTMENT (SIMPLIFIED)
+# 🎯 SELECT DEPARTMENT
 # =========================
 @app.route('/select_department')
 def select_department():
@@ -150,7 +150,7 @@ def select_department():
         return redirect('/grid')
 
 # =========================
-# 📤 UPLOAD (ADMIN ONLY)
+# 📤 UPLOAD (UPDATED)
 # =========================
 @app.route('/upload', methods=['GET', 'POST'])
 def upload():
@@ -175,16 +175,16 @@ def upload():
         cursor.execute("DELETE FROM students")
 
         for _, row in df.iterrows():
-            seat = normalize_seat(row.get('seat') or row.get('Seat'))
+            seat = normalize_seat(row.get('Seat'))
 
             cursor.execute("""
-                INSERT INTO students (id, srn, name, section, seat, status)
+                INSERT INTO students (PRN, SRN, name, Section, Seat, status)
                 VALUES (?, ?, ?, ?, ?, ?)
             """, (
-                str(row.get('id') or row.get('PRN')),
-                str(row.get('srn') or row.get('SRN')),
-                row.get('name') or row.get('Name'),
-                row.get('section') or row.get('Section'),
+                str(row.get('PRN')),
+                str(row.get('SRN')),
+                row.get('Name'),
+                row.get('Section'),
                 seat,
                 "OUT"
             ))
@@ -197,21 +197,6 @@ def upload():
     return render_template('upload.html')
 
 # =========================
-# 🎯 GRID
-# =========================
-@app.route('/grid')
-def grid():
-    audi = session.get("auditorium")
-    config = AUDITORIUM_CONFIG.get(audi)
-
-    return render_template(
-        'index.html',
-        rows=config["rows"],
-        default_cols=config["default_cols"],
-        extra_rows=config["extra_rows"]
-    )
-
-# =========================
 # 📡 SEATS
 # =========================
 @app.route('/seats')
@@ -220,7 +205,7 @@ def get_seats():
     conn = sqlite3.connect(db)
     cursor = conn.cursor()
 
-    cursor.execute("SELECT seat, name, status FROM students")
+    cursor.execute("SELECT Seat, name, status FROM students")
     rows = cursor.fetchall()
 
     conn.close()
@@ -231,7 +216,7 @@ def get_seats():
     ])
 
 # =========================
-# 🔍 SCAN
+# 🔍 SCAN (UPDATED)
 # =========================
 @app.route('/scan', methods=['POST'])
 def scan():
@@ -243,9 +228,9 @@ def scan():
     cursor = conn.cursor()
 
     cursor.execute("""
-        SELECT name, seat, status 
+        SELECT name, Seat, status 
         FROM students 
-        WHERE srn=? OR id=?
+        WHERE SRN=? OR PRN=?
     """, (student_id, student_id))
 
     student = cursor.fetchone()
@@ -257,7 +242,7 @@ def scan():
     new_status = "IN" if student[2] != "IN" else "OUT"
 
     cursor.execute("""
-        UPDATE students SET status=? WHERE seat=?
+        UPDATE students SET status=? WHERE Seat=?
     """, (new_status, student[1]))
 
     conn.commit()
@@ -281,8 +266,8 @@ def get_student(seat):
     seat = normalize_seat(seat)
 
     cursor.execute("""
-        SELECT name, srn, status, remark 
-        FROM students WHERE seat=?
+        SELECT name, SRN, status, remark 
+        FROM students WHERE Seat=?
     """, (seat,))
 
     student = cursor.fetchone()
@@ -313,7 +298,7 @@ def discipline():
     cursor = conn.cursor()
 
     cursor.execute("""
-        UPDATE students SET remark=? WHERE seat=?
+        UPDATE students SET remark=? WHERE Seat=?
     """, (action, seat))
 
     conn.commit()
