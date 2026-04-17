@@ -15,19 +15,23 @@ USERS = {
     },
     "BCOM": {
         "admin": {"password": "bcom@2026", "role": "admin"},
-        "student1": {"password": "bcom111", "role": "student"}
+        "student1": {"password": "bcom111", "role": "student"},
+        "student2": {"password": "bcom222", "role": "student"}
     },
     "LAW": {
         "admin": {"password": "law@2026", "role": "admin"},
-        "student1": {"password": "law111", "role": "student"}
+        "student1": {"password": "law111", "role": "student"},
+        "student2": {"password": "law222", "role": "student"}
     },
     "BBA": {
         "admin": {"password": "bba@2026", "role": "admin"},
-        "student1": {"password": "bba111", "role": "student"}
+        "student1": {"password": "bba111", "role": "student"},
+        "student2": {"password": "bba222", "role": "student"}
     },
     "PSYCHOLOGY": {
         "admin": {"password": "psy@2026", "role": "admin"},
-        "student1": {"password": "psy111", "role": "student"}
+        "student1": {"password": "psy111", "role": "student"},
+        "student2": {"password": "psy222", "role": "student"}
     }
 }
 
