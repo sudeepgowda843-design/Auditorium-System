@@ -35,35 +35,19 @@ USERS = {
     }
 }
 
-# 🔥 DB BASE PATH
+# 🔥 DB PATH
 DB_FOLDER = "databases"
 os.makedirs(DB_FOLDER, exist_ok=True)
 
 # 🔥 AUDITORIUM CONFIG
 AUDITORIUM_CONFIG = {
-    "1A": {
-        "default_cols": 22,
-        "rows": list("ABCDEFGHIJKLMNOPQRSTU"),
-        "extra_rows": {"V": 15, "W": 13}
-    },
-    "1B": {
-        "default_cols": 22,
-        "rows": list("ABCDEFGHIJKLMNOPQRSTU"),
-        "extra_rows": {"V": 16, "W": 13}
-    },
-    "2A": {
-        "default_cols": 22,
-        "rows": list("ABCDEFGHIJKLMNOPQRSTU"),
-        "extra_rows": {}
-    },
-    "2B": {
-        "default_cols": 22,
-        "rows": list("ABCDEFGHIJKLMNOPQRSTU"),
-        "extra_rows": {}
-    }
+    "1A": {"default_cols": 22, "rows": list("ABCDEFGHIJKLMNOPQRSTU"), "extra_rows": {"V": 15, "W": 13}},
+    "1B": {"default_cols": 22, "rows": list("ABCDEFGHIJKLMNOPQRSTU"), "extra_rows": {"V": 16, "W": 13}},
+    "2A": {"default_cols": 22, "rows": list("ABCDEFGHIJKLMNOPQRSTU"), "extra_rows": {}},
+    "2B": {"default_cols": 22, "rows": list("ABCDEFGHIJKLMNOPQRSTU"), "extra_rows": {}}
 }
 
-# 🔥 GET CURRENT DB
+# 🔥 GET DB
 def get_db():
     audi = session.get("auditorium")
     dept = session.get("department")
@@ -73,13 +57,13 @@ def get_db():
 
     return f"{DB_FOLDER}/{audi}_{dept}.db"
 
-# 🔥 NORMALIZE SEAT
+# 🔥 NORMALIZE
 def normalize_seat(seat):
     if not seat:
         return None
     return str(seat).replace("-", "").replace(" ", "").upper()
 
-# 🔥 INIT DB (UPDATED COLUMN NAMES)
+# 🔥 INIT DB
 def init_db(db):
     conn = sqlite3.connect(db)
     cursor = conn.cursor()
@@ -142,6 +126,10 @@ def select_auditorium():
 @app.route('/select_department')
 def select_department():
     db = get_db()
+
+    if not db:
+        return redirect('/select_auditorium')
+
     init_db(db)
 
     if session.get("role") == "admin":
@@ -150,7 +138,7 @@ def select_department():
         return redirect('/grid')
 
 # =========================
-# 📤 UPLOAD (UPDATED)
+# 📤 UPLOAD
 # =========================
 @app.route('/upload', methods=['GET', 'POST'])
 def upload():
@@ -197,11 +185,33 @@ def upload():
     return render_template('upload.html')
 
 # =========================
+# 🎯 GRID (🔥 MISSING FIX)
+# =========================
+@app.route('/grid')
+def grid():
+    audi = session.get("auditorium")
+
+    if not audi or audi not in AUDITORIUM_CONFIG:
+        return redirect('/select_auditorium')
+
+    config = AUDITORIUM_CONFIG[audi]
+
+    return render_template(
+        'index.html',
+        rows=config["rows"],
+        default_cols=config["default_cols"],
+        extra_rows=config["extra_rows"]
+    )
+
+# =========================
 # 📡 SEATS
 # =========================
 @app.route('/seats')
 def get_seats():
     db = get_db()
+    if not db:
+        return jsonify([])
+
     conn = sqlite3.connect(db)
     cursor = conn.cursor()
 
@@ -216,7 +226,7 @@ def get_seats():
     ])
 
 # =========================
-# 🔍 SCAN (UPDATED)
+# 🔍 SCAN
 # =========================
 @app.route('/scan', methods=['POST'])
 def scan():
@@ -255,7 +265,7 @@ def scan():
     })
 
 # =========================
-# 🪑 STUDENT BY SEAT
+# 🪑 STUDENT
 # =========================
 @app.route('/student/<seat>')
 def get_student(seat):
@@ -297,9 +307,7 @@ def discipline():
     conn = sqlite3.connect(db)
     cursor = conn.cursor()
 
-    cursor.execute("""
-        UPDATE students SET remark=? WHERE Seat=?
-    """, (action, seat))
+    cursor.execute("UPDATE students SET remark=? WHERE Seat=?", (action, seat))
 
     conn.commit()
     conn.close()
