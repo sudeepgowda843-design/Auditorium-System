@@ -9,24 +9,24 @@ app.secret_key = "secret123"
 # 🔐 USERS DATABASE (NEW)
 USERS = {
     "MBA": {
-        "admin": {"password": "admin123", "role": "admin"},
+        "admin": {"password": "pesu@2026", "role": "admin"},
         "student1": {"password": "mba123", "role": "student"},
         "student2": {"password": "mba456", "role": "student"}
     },
     "BCOM": {
-        "admin": {"password": "bcom123", "role": "admin"},
+        "admin": {"password": "bcom@2026", "role": "admin"},
         "student1": {"password": "bcom111", "role": "student"}
     },
     "LAW": {
-        "admin": {"password": "law123", "role": "admin"},
+        "admin": {"password": "law@2026", "role": "admin"},
         "student1": {"password": "law111", "role": "student"}
     },
     "BBA": {
-        "admin": {"password": "bba123", "role": "admin"},
+        "admin": {"password": "bba@2026", "role": "admin"},
         "student1": {"password": "bba111", "role": "student"}
     },
     "PSYCHOLOGY": {
-        "admin": {"password": "psy123", "role": "admin"},
+        "admin": {"password": "psy@2026", "role": "admin"},
         "student1": {"password": "psy111", "role": "student"}
     }
 }
