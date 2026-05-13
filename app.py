@@ -7,6 +7,8 @@ from datetime import datetime
 app = Flask(__name__)
 app.secret_key = "secret123"
 
+MASTER_DB = "auditorium_system.db"
+
 # =========================
 # USERS
 # =========================
@@ -42,13 +44,28 @@ USERS = {
 }
 
 MENTOR_PASSWORD = "mentor@2026"
-MASTER_DB = "auditorium_system.db"
 
 AUDITORIUM_CONFIG = {
-    "1A": {"default_cols": 22, "rows": list("ABCDEFGHIJKLMNOPQRSTU"), "extra_rows": {"V": 15, "W": 13}},
-    "1B": {"default_cols": 22, "rows": list("ABCDEFGHIJKLMNOPQRSTU"), "extra_rows": {"V": 16, "W": 13}},
-    "2A": {"default_cols": 22, "rows": list("ABCDEFGHIJKLMNOPQRSTU"), "extra_rows": {}},
-    "2B": {"default_cols": 22, "rows": list("ABCDEFGHIJKLMNOPQRSTU"), "extra_rows": {}}
+    "1A": {
+        "default_cols": 22,
+        "rows": list("ABCDEFGHIJKLMNOPQRSTU"),
+        "extra_rows": {"V": 15, "W": 13}
+    },
+    "1B": {
+        "default_cols": 22,
+        "rows": list("ABCDEFGHIJKLMNOPQRSTU"),
+        "extra_rows": {"V": 16, "W": 13}
+    },
+    "2A": {
+        "default_cols": 22,
+        "rows": list("ABCDEFGHIJKLMNOPQRSTU"),
+        "extra_rows": {}
+    },
+    "2B": {
+        "default_cols": 22,
+        "rows": list("ABCDEFGHIJKLMNOPQRSTU"),
+        "extra_rows": {}
+    }
 }
 
 
@@ -103,7 +120,6 @@ def init_master_db():
         status TEXT DEFAULT 'OUT',
         remark TEXT,
         mentor_action TEXT,
-        FOREIGN KEY(event_id) REFERENCES events(event_id),
         UNIQUE(event_id, PRN),
         UNIQUE(event_id, Seat)
     )
@@ -130,6 +146,7 @@ def mentor_exists(dept, mentor_name):
 
     count = cursor.fetchone()[0]
     conn.close()
+
     return count > 0
 
 
@@ -192,7 +209,12 @@ def admin_dashboard():
     cursor.execute("SELECT COUNT(*) FROM students_master WHERE UPPER(Department)=UPPER(?)", (dept,))
     total_students = cursor.fetchone()[0]
 
-    cursor.execute("SELECT COUNT(*) FROM students_master WHERE UPPER(Department)=UPPER(?) AND Status='Active'", (dept,))
+    cursor.execute("""
+        SELECT COUNT(*)
+        FROM students_master
+        WHERE UPPER(Department)=UPPER(?)
+        AND Status='Active'
+    """, (dept,))
     active_students = cursor.fetchone()[0]
 
     cursor.execute("""
@@ -349,29 +371,17 @@ def select_event():
     conn = sqlite3.connect(MASTER_DB)
     cursor = conn.cursor()
 
-    if role == "admin":
-        cursor.execute("""
-            SELECT event_id, event_name, event_date, auditorium, department
-            FROM events
-            WHERE UPPER(department)=UPPER(?)
-            ORDER BY event_id DESC
-        """, (dept,))
-    else:
-        cursor.execute("""
-            SELECT event_id, event_name, event_date, auditorium, department
-            FROM events
-            WHERE UPPER(department)=UPPER(?)
-            ORDER BY event_id DESC
-        """, (dept,))
+    cursor.execute("""
+        SELECT event_id, event_name, event_date, auditorium, department
+        FROM events
+        WHERE UPPER(department)=UPPER(?)
+        ORDER BY event_id DESC
+    """, (dept,))
 
     events = cursor.fetchall()
-    conn.close()
 
     if request.method == 'POST':
         event_id = request.form.get("event_id")
-
-        conn = sqlite3.connect(MASTER_DB)
-        cursor = conn.cursor()
 
         cursor.execute("""
             SELECT auditorium, department
@@ -394,11 +404,13 @@ def select_event():
 
         return redirect('/grid')
 
+    conn.close()
+
     return render_template('select_event.html', events=events)
 
 
 # =========================
-# UPLOAD EVENT GRID: PRN + Seat only
+# UPLOAD EVENT GRID
 # =========================
 @app.route('/upload_event_grid', methods=['GET', 'POST'])
 def upload_event_grid():
@@ -681,7 +693,6 @@ def mentor_dashboard():
     """, (event_id, mentor_name))
 
     rows = cursor.fetchall()
-    conn.close()
 
     students = []
     for r in rows:
@@ -701,13 +712,64 @@ def mentor_dashboard():
     present_students = len([s for s in students if s["status"] == "IN"])
     absent_students = total_students - present_students
 
+    action_taken = len([s for s in students if s["mentor_action"]])
+    action_pending = total_students - action_taken
+
+    discipline_cases = len([s for s in students if s["remark"]])
+    attendance_percentage = round((present_students / total_students) * 100, 2) if total_students else 0
+
+    cursor.execute("""
+        SELECT es.remark, COUNT(*)
+        FROM event_seating es
+        JOIN students_master sm ON es.PRN = sm.PRN
+        WHERE es.event_id=?
+        AND sm.Mentor=?
+        AND es.remark IS NOT NULL
+        AND es.remark != ''
+        GROUP BY es.remark
+    """, (event_id, mentor_name))
+    discipline_rows = cursor.fetchall()
+
+    cursor.execute("""
+        SELECT sm.PRN,
+               sm.Name,
+               COUNT(es.id) AS total_events,
+               SUM(CASE WHEN es.status='IN' THEN 1 ELSE 0 END) AS attended_events
+        FROM event_seating es
+        JOIN students_master sm ON es.PRN = sm.PRN
+        WHERE sm.Mentor=?
+        AND sm.Status='Active'
+        GROUP BY sm.PRN, sm.Name
+        ORDER BY sm.Name
+    """, (mentor_name,))
+    student_attendance_rows = cursor.fetchall()
+
+    conn.close()
+
+    discipline_labels = [r[0] for r in discipline_rows]
+    discipline_counts = [r[1] for r in discipline_rows]
+
+    student_names = [r[1] for r in student_attendance_rows]
+    student_attendance_percentages = [
+        round((r[3] / r[2]) * 100, 2) if r[2] else 0
+        for r in student_attendance_rows
+    ]
+
     return render_template(
         'mentor_dashboard.html',
         mentor_name=mentor_name,
         students=students,
         total_students=total_students,
         present_students=present_students,
-        absent_students=absent_students
+        absent_students=absent_students,
+        attendance_percentage=attendance_percentage,
+        action_taken=action_taken,
+        action_pending=action_pending,
+        discipline_cases=discipline_cases,
+        discipline_labels=discipline_labels,
+        discipline_counts=discipline_counts,
+        student_names=student_names,
+        student_attendance_percentages=student_attendance_percentages
     )
 
 
@@ -763,8 +825,35 @@ def fomc_dashboard():
     if session.get("role") != "fomc":
         return redirect('/')
 
+    department_filter = request.args.get("department", "ALL")
+    event_filter = request.args.get("event_id", "ALL")
+    mentor_filter = request.args.get("mentor", "ALL")
+
     conn = sqlite3.connect(MASTER_DB)
     cursor = conn.cursor()
+
+    cursor.execute("""
+        SELECT DISTINCT Department
+        FROM students_master
+        WHERE Department IS NOT NULL AND Department != ''
+        ORDER BY Department
+    """)
+    departments = [row[0] for row in cursor.fetchall()]
+
+    cursor.execute("""
+        SELECT event_id, event_name, event_date, auditorium, department
+        FROM events
+        ORDER BY event_id DESC
+    """)
+    events = cursor.fetchall()
+
+    cursor.execute("""
+        SELECT DISTINCT Mentor
+        FROM students_master
+        WHERE Mentor IS NOT NULL AND Mentor != ''
+        ORDER BY Mentor
+    """)
+    mentors = [row[0] for row in cursor.fetchall()]
 
     cursor.execute("SELECT COUNT(*) FROM students_master")
     total_students = cursor.fetchone()[0]
@@ -772,74 +861,168 @@ def fomc_dashboard():
     cursor.execute("SELECT COUNT(*) FROM students_master WHERE Status='Active'")
     active_students = cursor.fetchone()[0]
 
-    cursor.execute("SELECT COUNT(DISTINCT Department) FROM students_master WHERE Department IS NOT NULL AND Department != ''")
+    cursor.execute("""
+        SELECT COUNT(DISTINCT Department)
+        FROM students_master
+        WHERE Department IS NOT NULL AND Department != ''
+    """)
     total_departments = cursor.fetchone()[0]
 
-    cursor.execute("SELECT COUNT(DISTINCT Mentor) FROM students_master WHERE Mentor IS NOT NULL AND Mentor != ''")
+    cursor.execute("""
+        SELECT COUNT(DISTINCT Mentor)
+        FROM students_master
+        WHERE Mentor IS NOT NULL AND Mentor != ''
+    """)
     total_mentors = cursor.fetchone()[0]
 
     cursor.execute("SELECT COUNT(*) FROM events")
     total_events = cursor.fetchone()[0]
 
-    cursor.execute("""
+    conditions = []
+    params = []
+
+    if department_filter != "ALL":
+        conditions.append("UPPER(sm.Department)=UPPER(?)")
+        params.append(department_filter)
+
+    if event_filter != "ALL":
+        conditions.append("e.event_id=?")
+        params.append(event_filter)
+
+    if mentor_filter != "ALL":
+        conditions.append("sm.Mentor=?")
+        params.append(mentor_filter)
+
+    where_clause = ""
+    if conditions:
+        where_clause = "WHERE " + " AND ".join(conditions)
+
+    discipline_where = where_clause
+    discipline_params = list(params)
+
+    if discipline_where:
+        discipline_where += " AND es.remark IS NOT NULL AND es.remark != ''"
+    else:
+        discipline_where = "WHERE es.remark IS NOT NULL AND es.remark != ''"
+
+    cursor.execute(f"""
         SELECT sm.Department,
-               COUNT(es.id) as total,
-               SUM(CASE WHEN es.status='IN' THEN 1 ELSE 0 END) as present
+               COUNT(es.id) AS total_assigned,
+               SUM(CASE WHEN es.status='IN' THEN 1 ELSE 0 END) AS present_count
         FROM event_seating es
         JOIN students_master sm ON es.PRN = sm.PRN
+        JOIN events e ON es.event_id = e.event_id
+        {where_clause}
         GROUP BY sm.Department
         ORDER BY sm.Department
-    """)
+    """, params)
     dept_attendance_rows = cursor.fetchall()
 
-    cursor.execute("""
-        SELECT sm.Mentor,
-               COUNT(es.id) as total,
-               SUM(CASE WHEN es.mentor_action IS NOT NULL AND es.mentor_action != '' THEN 1 ELSE 0 END) as action_taken
+    cursor.execute(f"""
+        SELECT e.event_name,
+               e.event_date,
+               COUNT(es.id) AS total_assigned,
+               SUM(CASE WHEN es.status='IN' THEN 1 ELSE 0 END) AS present_count
         FROM event_seating es
         JOIN students_master sm ON es.PRN = sm.PRN
-        WHERE sm.Mentor IS NOT NULL AND sm.Mentor != ''
+        JOIN events e ON es.event_id = e.event_id
+        {where_clause}
+        GROUP BY e.event_id, e.event_name, e.event_date
+        ORDER BY e.event_date DESC
+    """, params)
+    event_attendance_rows = cursor.fetchall()
+
+    cursor.execute(f"""
+        SELECT sm.Mentor,
+               COUNT(es.id) AS total_cases,
+               SUM(CASE WHEN es.mentor_action IS NOT NULL AND es.mentor_action != '' THEN 1 ELSE 0 END) AS action_taken
+        FROM event_seating es
+        JOIN students_master sm ON es.PRN = sm.PRN
+        JOIN events e ON es.event_id = e.event_id
+        {where_clause}
         GROUP BY sm.Mentor
+        HAVING sm.Mentor IS NOT NULL AND sm.Mentor != ''
         ORDER BY action_taken DESC
-    """)
+    """, params)
     mentor_action_rows = cursor.fetchall()
 
-    cursor.execute("""
-        SELECT sm.Department, COUNT(es.remark)
+    cursor.execute(f"""
+        SELECT sm.Department,
+               COUNT(es.remark) AS discipline_count
         FROM event_seating es
         JOIN students_master sm ON es.PRN = sm.PRN
-        WHERE es.remark IS NOT NULL AND es.remark != ''
+        JOIN events e ON es.event_id = e.event_id
+        {discipline_where}
         GROUP BY sm.Department
-    """)
+        ORDER BY discipline_count DESC
+    """, discipline_params)
     discipline_rows = cursor.fetchall()
 
-    cursor.execute("""
-        SELECT sm.PRN, sm.SRN, sm.Name, sm.Department, sm.Mentor,
-               COUNT(es.id) as total_events,
-               SUM(CASE WHEN es.status!='IN' THEN 1 ELSE 0 END) as absent_count
+    cursor.execute(f"""
+        SELECT sm.PRN,
+               sm.SRN,
+               sm.Name,
+               sm.Department,
+               sm.Section,
+               sm.Batch,
+               sm.Mentor,
+               COUNT(es.id) AS total_events,
+               SUM(CASE WHEN es.status='IN' THEN 1 ELSE 0 END) AS attended_events,
+               SUM(CASE WHEN es.status!='IN' THEN 1 ELSE 0 END) AS missed_events,
+               SUM(CASE WHEN es.remark IS NOT NULL AND es.remark != '' THEN 1 ELSE 0 END) AS discipline_count,
+               SUM(CASE WHEN es.mentor_action IS NOT NULL AND es.mentor_action != '' THEN 1 ELSE 0 END) AS action_taken_count
         FROM event_seating es
         JOIN students_master sm ON es.PRN = sm.PRN
-        GROUP BY sm.PRN
-        HAVING absent_count >= 2
-        ORDER BY absent_count DESC
-        LIMIT 20
-    """)
-    risk_students = cursor.fetchall()
+        JOIN events e ON es.event_id = e.event_id
+        {where_clause}
+        GROUP BY sm.PRN, sm.SRN, sm.Name, sm.Department, sm.Section, sm.Batch, sm.Mentor
+        ORDER BY missed_events DESC, sm.Name
+    """, params)
+    student_rows = cursor.fetchall()
 
     conn.close()
 
-    dept_labels = [r[0] for r in dept_attendance_rows]
+    dept_labels = [row[0] for row in dept_attendance_rows]
     dept_percentages = [
-        round((r[2] / r[1]) * 100, 2) if r[1] else 0
-        for r in dept_attendance_rows
+        round((row[2] / row[1]) * 100, 2) if row[1] else 0
+        for row in dept_attendance_rows
     ]
 
-    mentor_labels = [r[0] for r in mentor_action_rows]
-    mentor_action_taken = [r[2] for r in mentor_action_rows]
-    mentor_pending = [r[1] - r[2] for r in mentor_action_rows]
+    event_labels = [f"{row[0]} ({row[1]})" for row in event_attendance_rows]
+    event_percentages = [
+        round((row[3] / row[2]) * 100, 2) if row[2] else 0
+        for row in event_attendance_rows
+    ]
 
-    discipline_labels = [r[0] for r in discipline_rows]
-    discipline_counts = [r[1] for r in discipline_rows]
+    mentor_labels = [row[0] for row in mentor_action_rows]
+    mentor_action_taken = [row[2] for row in mentor_action_rows]
+    mentor_pending = [row[1] - row[2] for row in mentor_action_rows]
+
+    discipline_labels = [row[0] for row in discipline_rows]
+    discipline_counts = [row[1] for row in discipline_rows]
+
+    student_stats = []
+    for row in student_rows:
+        total = row[7]
+        attended = row[8]
+        missed = row[9]
+        attendance_percentage = round((attended / total) * 100, 2) if total else 0
+
+        student_stats.append({
+            "PRN": row[0],
+            "SRN": row[1],
+            "Name": row[2],
+            "Department": row[3],
+            "Section": row[4],
+            "Batch": row[5],
+            "Mentor": row[6],
+            "TotalEvents": total,
+            "Attended": attended,
+            "Missed": missed,
+            "AttendancePercentage": attendance_percentage,
+            "DisciplineCount": row[10],
+            "ActionTakenCount": row[11]
+        })
 
     return render_template(
         'fomc_dashboard.html',
@@ -848,14 +1031,22 @@ def fomc_dashboard():
         total_departments=total_departments,
         total_mentors=total_mentors,
         total_events=total_events,
+        departments=departments,
+        events=events,
+        mentors=mentors,
+        selected_department=department_filter,
+        selected_event=event_filter,
+        selected_mentor=mentor_filter,
         dept_labels=dept_labels,
         dept_percentages=dept_percentages,
+        event_labels=event_labels,
+        event_percentages=event_percentages,
         mentor_labels=mentor_labels,
         mentor_action_taken=mentor_action_taken,
         mentor_pending=mentor_pending,
         discipline_labels=discipline_labels,
         discipline_counts=discipline_counts,
-        risk_students=risk_students
+        student_stats=student_stats
     )
 
 
@@ -889,6 +1080,9 @@ def download():
     return send_file(file_path, as_attachment=True)
 
 
+# =========================
+# RESET EVENT
+# =========================
 @app.route('/reset', methods=['POST'])
 def reset():
     if session.get("role") != "admin":
@@ -921,4 +1115,5 @@ def logout():
 
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    port = int(os.environ.get("PORT", 5050))
+    app.run(host="0.0.0.0", port=port, debug=True)

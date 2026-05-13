@@ -1,4 +1,4 @@
- body {
+body {
     margin: 0;
     font-family: 'Poppins', sans-serif;
     background: url('/static/bg.jpg') no-repeat center center/cover;
@@ -20,7 +20,7 @@ body::before {
 .center-box {
     width: 350px;
     margin: auto;
-    margin-top: 10%;
+    margin-top: 5%;
     padding: 30px;
     text-align: center;
 
@@ -114,7 +114,7 @@ button:hover {
     }
 }
 
-/* TOOLTIP (HOVER PREVIEW) */
+/* TOOLTIP */
 .tooltip {
     position: absolute;
     background: rgba(0,0,0,0.8);
@@ -127,10 +127,7 @@ button:hover {
     z-index: 999;
 }
 
-/* ============================= */
-/* FOMC / ADMIN DASHBOARD CARDS */
-/* ============================= */
-
+/* GLASS CARDS */
 .glass-card {
     background: rgba(255,255,255,0.15);
     backdrop-filter: blur(15px);
@@ -157,7 +154,72 @@ button:hover {
     padding: 10px;
 }
 
-/* DASHBOARD TABLE */
+/* DASHBOARD LAYOUTS */
+.dashboard-grid-2 {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 18px;
+}
+
+.dashboard-grid-3 {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 18px;
+}
+
+.dashboard-grid-4 {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 18px;
+}
+
+.dashboard-grid-5 {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 18px;
+}
+
+.filter-bar {
+    display: grid;
+    grid-template-columns: 1fr 1.5fr 1fr auto;
+    gap: 10px;
+    margin-bottom: 25px;
+}
+
+.filter-bar select,
+.filter-bar button {
+    width: 100%;
+    margin: 0;
+}
+
+/* TABLES */
+.table-wrapper {
+    overflow-x: auto;
+    max-height: 500px;
+}
+
+.table-wrapper table {
+    width: 100%;
+    border-collapse: collapse;
+    background: white;
+    color: black;
+}
+
+.table-wrapper th,
+.table-wrapper td {
+    padding: 9px;
+    border: 1px solid #ddd;
+    text-align: center;
+    font-size: 13px;
+}
+
+.table-wrapper th {
+    background: #4facfe;
+    color: white;
+    position: sticky;
+    top: 0;
+}
+
 .glass-card table {
     width: 100%;
     background: white;
@@ -179,7 +241,7 @@ button:hover {
     color: white;
 }
 
-/* RESPONSIVE DASHBOARD */
+/* RESPONSIVE */
 @media (max-width: 900px) {
     .center-box {
         width: 90%;
@@ -195,6 +257,14 @@ button:hover {
         font-size: 9px;
         min-width: 26px;
         padding: 3px;
+    }
+
+    .dashboard-grid-2,
+    .dashboard-grid-3,
+    .dashboard-grid-4,
+    .dashboard-grid-5,
+    .filter-bar {
+        grid-template-columns: 1fr;
     }
 }
 

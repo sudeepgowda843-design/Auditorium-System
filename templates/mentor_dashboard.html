@@ -3,6 +3,7 @@
 <head>
     <title>Mentor Dashboard</title>
     <link rel="stylesheet" href="/static/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 
 <body>
@@ -13,56 +14,123 @@
     <h3>{{ mentor_name }}</h3>
 </div>
 
-<div class="center-box" style="width:95%; max-width:1200px;">
+<div class="center-box" style="width:95%; max-width:1250px;">
 
-    <h2>My Students</h2>
+    <div class="dashboard-grid-4">
+        <div class="glass-card">
+            <h3>Total Students</h3>
+            <h1>{{ total_students }}</h1>
+        </div>
 
-    <div style="display:flex; justify-content:center; gap:20px; flex-wrap:wrap;">
-        <h3>Total: {{ total_students }}</h3>
-        <h3>Present: {{ present_students }}</h3>
-        <h3>Absent: {{ absent_students }}</h3>
+        <div class="glass-card">
+            <h3>Present</h3>
+            <h1>{{ present_students }}</h1>
+        </div>
+
+        <div class="glass-card">
+            <h3>Absent</h3>
+            <h1>{{ absent_students }}</h1>
+        </div>
+
+        <div class="glass-card">
+            <h3>Attendance %</h3>
+            <h1>{{ attendance_percentage }}%</h1>
+        </div>
     </div>
 
     <br>
 
-    <table width="100%" style="background:white; color:black; border-collapse:collapse;">
-        <tr>
-            <th>PRN</th>
-            <th>SRN</th>
-            <th>Name</th>
-            <th>Section</th>
-            <th>Batch</th>
-            <th>Seat</th>
-            <th>Status</th>
-            <th>Discipline Remark</th>
-            <th>Mentor Action</th>
-            <th>Save</th>
-        </tr>
+    <div class="dashboard-grid-3">
+        <div class="glass-card">
+            <h3>Action Taken</h3>
+            <h1>{{ action_taken }}</h1>
+        </div>
 
-        {% for s in students %}
-        <tr>
-            <td>{{ s.PRN }}</td>
-            <td>{{ s.SRN }}</td>
-            <td>{{ s.name }}</td>
-            <td>{{ s.Section }}</td>
-            <td>{{ s.Batch }}</td>
-            <td>{{ s.Seat }}</td>
-            <td>{{ s.status }}</td>
-            <td>{{ s.remark or '' }}</td>
-            <td>
-                <input id="action_{{ s.PRN }}" value="{{ s.mentor_action or '' }}" style="width:90%;">
-            </td>
-            <td>
-                <button onclick="saveAction('{{ s.PRN }}')">Save</button>
-            </td>
-        </tr>
-        {% endfor %}
-    </table>
+        <div class="glass-card">
+            <h3>Pending Action</h3>
+            <h1>{{ action_pending }}</h1>
+        </div>
+
+        <div class="glass-card">
+            <h3>Discipline Cases</h3>
+            <h1>{{ discipline_cases }}</h1>
+        </div>
+    </div>
 
     <br>
 
-    <button onclick="window.location.href='/select_auditorium'">
-        Change Auditorium
+    <div class="dashboard-grid-2">
+        <div class="glass-card">
+            <h3>Present vs Absent</h3>
+            <canvas id="presentChart"></canvas>
+        </div>
+
+        <div class="glass-card">
+            <h3>Action Taken vs Pending</h3>
+            <canvas id="actionChart"></canvas>
+        </div>
+    </div>
+
+    <br>
+
+    <div class="dashboard-grid-2">
+        <div class="glass-card">
+            <h3>Student Attendance % Across Events</h3>
+            <canvas id="studentAttendanceChart"></canvas>
+        </div>
+
+        <div class="glass-card">
+            <h3>Discipline Remark Count</h3>
+            <canvas id="disciplineChart"></canvas>
+        </div>
+    </div>
+
+    <br>
+
+    <div class="glass-card">
+        <h3>My Students - Current Event</h3>
+
+        <div class="table-wrapper">
+            <table>
+                <tr>
+                    <th>PRN</th>
+                    <th>SRN</th>
+                    <th>Name</th>
+                    <th>Section</th>
+                    <th>Batch</th>
+                    <th>Seat</th>
+                    <th>Status</th>
+                    <th>Discipline Remark</th>
+                    <th>Mentor Action</th>
+                    <th>Save</th>
+                </tr>
+
+                {% for s in students %}
+                <tr>
+                    <td>{{ s.PRN }}</td>
+                    <td>{{ s.SRN }}</td>
+                    <td>{{ s.name }}</td>
+                    <td>{{ s.Section }}</td>
+                    <td>{{ s.Batch }}</td>
+                    <td>{{ s.Seat }}</td>
+                    <td>{{ s.status }}</td>
+                    <td>{{ s.remark or '' }}</td>
+                    <td>
+                        <input id="action_{{ s.PRN }}" value="{{ s.mentor_action or '' }}">
+                    </td>
+                    <td>
+                        <button onclick="saveAction('{{ s.PRN }}')">Save</button>
+                    </td>
+                </tr>
+                {% endfor %}
+            </table>
+        </div>
+    </div>
+
+    <br>
+
+    <button onclick="window.location.href='/select_event'">
+        Change Event
     </button>
 
     <button onclick="window.location.href='/logout'">
@@ -72,6 +140,67 @@
 </div>
 
 <script>
+const presentStudents = {{ present_students }};
+const absentStudents = {{ absent_students }};
+const actionTaken = {{ action_taken }};
+const actionPending = {{ action_pending }};
+
+const disciplineLabels = {{ discipline_labels | tojson }};
+const disciplineCounts = {{ discipline_counts | tojson }};
+
+const studentNames = {{ student_names | tojson }};
+const studentAttendancePercentages = {{ student_attendance_percentages | tojson }};
+
+new Chart(document.getElementById('presentChart'), {
+    type: 'pie',
+    data: {
+        labels: ['Present', 'Absent'],
+        datasets: [{
+            data: [presentStudents, absentStudents]
+        }]
+    },
+    options: { responsive: true }
+});
+
+new Chart(document.getElementById('actionChart'), {
+    type: 'doughnut',
+    data: {
+        labels: ['Action Taken', 'Pending'],
+        datasets: [{
+            data: [actionTaken, actionPending]
+        }]
+    },
+    options: { responsive: true }
+});
+
+new Chart(document.getElementById('studentAttendanceChart'), {
+    type: 'bar',
+    data: {
+        labels: studentNames,
+        datasets: [{
+            label: 'Attendance %',
+            data: studentAttendancePercentages
+        }]
+    },
+    options: {
+        responsive: true,
+        indexAxis: 'y',
+        scales: { x: { min: 0, max: 100 } }
+    }
+});
+
+new Chart(document.getElementById('disciplineChart'), {
+    type: 'bar',
+    data: {
+        labels: disciplineLabels,
+        datasets: [{
+            label: 'Discipline Count',
+            data: disciplineCounts
+        }]
+    },
+    options: { responsive: true }
+});
+
 function saveAction(prn){
     let action = document.getElementById("action_" + prn).value;
 

@@ -7,38 +7,26 @@
 
 <body>
 
-<!-- 🔥 BACKGROUND -->
-<div class="watermark"></div>
-
-<!-- 🔥 CENTER BOX -->
-<div class="center-box fade-in">
-
+<div class="center-box">
     <img src="/static/logo.png" class="logo">
-    <h2>Login</h2>
+    <h2 style="color:white;">Login</h2>
 
     <form method="POST">
-
-        <!-- 🔥 DEPARTMENT DROPDOWN -->
         <select name="department" required>
             <option value="">Select Department</option>
+            <option value="FOMC">FOMC</option>
             <option value="MBA">MBA</option>
             <option value="BCOM">BCOM</option>
             <option value="LAW">LAW</option>
             <option value="BBA">BBA</option>
             <option value="PSYCHOLOGY">Psychology</option>
-            <option value="FOMC">FOMC</option>
         </select>
 
-        <!-- 🔥 USERNAME -->
         <input name="username" placeholder="Username" required>
-
-        <!-- 🔥 PASSWORD -->
         <input name="password" type="password" placeholder="Password" required>
 
         <button type="submit">Login</button>
-
     </form>
-
 </div>
 
 </body>

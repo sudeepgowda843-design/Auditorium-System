@@ -11,13 +11,39 @@
 <div class="header">
     <img src="/static/logo.png" class="logo">
     <h1>FOMC Dashboard</h1>
-    <h3>Overall Attendance, Discipline & Mentor Action Analytics</h3>
+    <h3>Department Analytics, Student Statistics & Mentor Action Tracking</h3>
 </div>
 
-<div class="center-box" style="width:95%; max-width:1250px;">
+<div class="center-box" style="width:95%; max-width:1300px;">
 
-    <div style="display:grid; grid-template-columns:repeat(5,1fr); gap:15px;">
+    <form method="GET" action="/fomc_dashboard" class="filter-bar">
+        <select name="department">
+            <option value="ALL">All Departments</option>
+            {% for d in departments %}
+            <option value="{{ d }}" {% if selected_department == d %}selected{% endif %}>{{ d }}</option>
+            {% endfor %}
+        </select>
 
+        <select name="event_id">
+            <option value="ALL">All Events</option>
+            {% for e in events %}
+            <option value="{{ e[0] }}" {% if selected_event|string == e[0]|string %}selected{% endif %}>
+                {{ e[1] }} | {{ e[2] }} | {{ e[3] }} | {{ e[4] }}
+            </option>
+            {% endfor %}
+        </select>
+
+        <select name="mentor">
+            <option value="ALL">All Mentors</option>
+            {% for m in mentors %}
+            <option value="{{ m }}" {% if selected_mentor == m %}selected{% endif %}>{{ m }}</option>
+            {% endfor %}
+        </select>
+
+        <button type="submit">Apply Filter</button>
+    </form>
+
+    <div class="dashboard-grid-5">
         <div class="glass-card">
             <h3>Total Students</h3>
             <h1>{{ total_students }}</h1>
@@ -42,60 +68,78 @@
             <h3>Events</h3>
             <h1>{{ total_events }}</h1>
         </div>
-
     </div>
 
-    <br><br>
+    <br>
 
-    <div style="display:grid; grid-template-columns:1fr 1fr; gap:20px;">
-
+    <div class="dashboard-grid-2">
         <div class="glass-card">
             <h3>Department-wise Attendance %</h3>
             <canvas id="deptAttendanceChart"></canvas>
         </div>
 
         <div class="glass-card">
+            <h3>Event-wise Attendance %</h3>
+            <canvas id="eventAttendanceChart"></canvas>
+        </div>
+    </div>
+
+    <br>
+
+    <div class="dashboard-grid-2">
+        <div class="glass-card">
+            <h3>Mentor Action Taken vs Pending</h3>
+            <canvas id="mentorActionChart"></canvas>
+        </div>
+
+        <div class="glass-card">
             <h3>Discipline Cases by Department</h3>
             <canvas id="disciplineChart"></canvas>
         </div>
-
     </div>
 
     <br>
 
     <div class="glass-card">
-        <h3>Mentor Action Taken vs Pending</h3>
-        <canvas id="mentorActionChart"></canvas>
-    </div>
+        <h3>Student-wise Attendance Statistics</h3>
 
-    <br>
+        <div class="table-wrapper">
+            <table>
+                <tr>
+                    <th>PRN</th>
+                    <th>SRN</th>
+                    <th>Name</th>
+                    <th>Department</th>
+                    <th>Section</th>
+                    <th>Batch</th>
+                    <th>Mentor</th>
+                    <th>Total Events</th>
+                    <th>Attended</th>
+                    <th>Missed</th>
+                    <th>Attendance %</th>
+                    <th>Discipline</th>
+                    <th>Mentor Actions</th>
+                </tr>
 
-    <div class="glass-card">
-        <h3>Frequent Absentee / Risk Students</h3>
-
-        <table width="100%">
-            <tr>
-                <th>PRN</th>
-                <th>SRN</th>
-                <th>Name</th>
-                <th>Department</th>
-                <th>Mentor</th>
-                <th>Total Events</th>
-                <th>Absent Count</th>
-            </tr>
-
-            {% for s in risk_students %}
-            <tr>
-                <td>{{ s[0] }}</td>
-                <td>{{ s[1] }}</td>
-                <td>{{ s[2] }}</td>
-                <td>{{ s[3] }}</td>
-                <td>{{ s[4] }}</td>
-                <td>{{ s[5] }}</td>
-                <td>{{ s[6] }}</td>
-            </tr>
-            {% endfor %}
-        </table>
+                {% for s in student_stats %}
+                <tr>
+                    <td>{{ s.PRN }}</td>
+                    <td>{{ s.SRN }}</td>
+                    <td>{{ s.Name }}</td>
+                    <td>{{ s.Department }}</td>
+                    <td>{{ s.Section }}</td>
+                    <td>{{ s.Batch }}</td>
+                    <td>{{ s.Mentor }}</td>
+                    <td>{{ s.TotalEvents }}</td>
+                    <td>{{ s.Attended }}</td>
+                    <td>{{ s.Missed }}</td>
+                    <td>{{ s.AttendancePercentage }}%</td>
+                    <td>{{ s.DisciplineCount }}</td>
+                    <td>{{ s.ActionTakenCount }}</td>
+                </tr>
+                {% endfor %}
+            </table>
+        </div>
     </div>
 
     <br>
@@ -113,6 +157,9 @@
 <script>
 const deptLabels = {{ dept_labels | tojson }};
 const deptPercentages = {{ dept_percentages | tojson }};
+
+const eventLabels = {{ event_labels | tojson }};
+const eventPercentages = {{ event_percentages | tojson }};
 
 const mentorLabels = {{ mentor_labels | tojson }};
 const mentorActionTaken = {{ mentor_action_taken | tojson }};
@@ -132,26 +179,23 @@ new Chart(document.getElementById('deptAttendanceChart'), {
     },
     options: {
         responsive: true,
-        scales: {
-            y: {
-                min: 0,
-                max: 100
-            }
-        }
+        scales: { y: { min: 0, max: 100 } }
     }
 });
 
-new Chart(document.getElementById('disciplineChart'), {
-    type: 'bar',
+new Chart(document.getElementById('eventAttendanceChart'), {
+    type: 'line',
     data: {
-        labels: disciplineLabels,
+        labels: eventLabels,
         datasets: [{
-            label: 'Discipline Cases',
-            data: disciplineCounts
+            label: 'Attendance %',
+            data: eventPercentages,
+            tension: 0.3
         }]
     },
     options: {
-        responsive: true
+        responsive: true,
+        scales: { y: { min: 0, max: 100 } }
     }
 });
 
@@ -173,6 +217,20 @@ new Chart(document.getElementById('mentorActionChart'), {
     options: {
         responsive: true,
         indexAxis: 'y'
+    }
+});
+
+new Chart(document.getElementById('disciplineChart'), {
+    type: 'bar',
+    data: {
+        labels: disciplineLabels,
+        datasets: [{
+            label: 'Discipline Cases',
+            data: disciplineCounts
+        }]
+    },
+    options: {
+        responsive: true
     }
 });
 </script>
