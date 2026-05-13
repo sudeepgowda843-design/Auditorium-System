@@ -1,4 +1,4 @@
-body {
+ body {
     margin: 0;
     font-family: 'Poppins', sans-serif;
     background: url('/static/bg.jpg') no-repeat center center/cover;
@@ -75,7 +75,7 @@ button:hover {
     min-width: 30px;
 }
 
-/* HOVER (slightly controlled so it doesn't break layout) */
+/* HOVER */
 .seat:hover {
     transform: scale(1.15);
     background: white;
@@ -83,13 +83,19 @@ button:hover {
 }
 
 /* STATUS COLORS */
-.green { background: #00c853 !important; }
-.red { background: #ff1744 !important; }
+.green { 
+    background: #00c853 !important; 
+}
+
+.red { 
+    background: #ff1744 !important; 
+}
 
 /* HEADER */
 .header {
     text-align:center;
     color:white;
+    padding-top: 20px;
 }
 
 .logo {
@@ -98,8 +104,14 @@ button:hover {
 
 /* ANIMATION */
 @keyframes fadeIn {
-    from {opacity:0; transform: translateY(20px);}
-    to {opacity:1; transform: translateY(0);}
+    from {
+        opacity:0; 
+        transform: translateY(20px);
+    }
+    to {
+        opacity:1; 
+        transform: translateY(0);
+    }
 }
 
 /* TOOLTIP (HOVER PREVIEW) */
@@ -112,4 +124,90 @@ button:hover {
     font-size: 12px;
     pointer-events: none;
     display: none;
+    z-index: 999;
+}
+
+/* ============================= */
+/* FOMC / ADMIN DASHBOARD CARDS */
+/* ============================= */
+
+.glass-card {
+    background: rgba(255,255,255,0.15);
+    backdrop-filter: blur(15px);
+    border-radius: 16px;
+    padding: 20px;
+    color: white;
+    box-shadow: 0 8px 25px rgba(0,0,0,0.25);
+    text-align: center;
+    margin-bottom: 15px;
+    border: 1px solid rgba(255,255,255,0.2);
+    animation: fadeIn 0.8s ease;
+}
+
+.glass-card h1,
+.glass-card h2,
+.glass-card h3 {
+    color: white;
+    margin: 10px 0;
+}
+
+.glass-card canvas {
+    background: rgba(255,255,255,0.92);
+    border-radius: 12px;
+    padding: 10px;
+}
+
+/* DASHBOARD TABLE */
+.glass-card table {
+    width: 100%;
+    background: white;
+    color: black;
+    border-collapse: collapse;
+    border-radius: 10px;
+    overflow: hidden;
+}
+
+.glass-card table th,
+.glass-card table td {
+    padding: 10px;
+    border: 1px solid #ddd;
+    text-align: center;
+}
+
+.glass-card table th {
+    background: #4facfe;
+    color: white;
+}
+
+/* RESPONSIVE DASHBOARD */
+@media (max-width: 900px) {
+    .center-box {
+        width: 90%;
+        margin-top: 8%;
+    }
+
+    .grid {
+        grid-template-columns: repeat(22, minmax(26px, 1fr));
+        overflow-x: auto;
+    }
+
+    .seat {
+        font-size: 9px;
+        min-width: 26px;
+        padding: 3px;
+    }
+}
+
+@media (max-width: 600px) {
+    input, select, button {
+        width: 95%;
+    }
+
+    .header h1 {
+        font-size: 22px;
+    }
+
+    .glass-card {
+        padding: 14px;
+    }
 }

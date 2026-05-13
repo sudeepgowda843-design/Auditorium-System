@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Mentor Dashboard</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+
+<body>
+
+<div class="header">
+    <img src="/static/logo.png" class="logo">
+    <h1>Mentor Dashboard</h1>
+    <h3>{{ mentor_name }}</h3>
+</div>
+
+<div class="center-box" style="width:95%; max-width:1200px;">
+
+    <h2>My Students</h2>
+
+    <div style="display:flex; justify-content:center; gap:20px; flex-wrap:wrap;">
+        <h3>Total: {{ total_students }}</h3>
+        <h3>Present: {{ present_students }}</h3>
+        <h3>Absent: {{ absent_students }}</h3>
+    </div>
+
+    <br>
+
+    <table width="100%" style="background:white; color:black; border-collapse:collapse;">
+        <tr>
+            <th>PRN</th>
+            <th>SRN</th>
+            <th>Name</th>
+            <th>Section</th>
+            <th>Batch</th>
+            <th>Seat</th>
+            <th>Status</th>
+            <th>Discipline Remark</th>
+            <th>Mentor Action</th>
+            <th>Save</th>
+        </tr>
+
+        {% for s in students %}
+        <tr>
+            <td>{{ s.PRN }}</td>
+            <td>{{ s.SRN }}</td>
+            <td>{{ s.name }}</td>
+            <td>{{ s.Section }}</td>
+            <td>{{ s.Batch }}</td>
+            <td>{{ s.Seat }}</td>
+            <td>{{ s.status }}</td>
+            <td>{{ s.remark or '' }}</td>
+            <td>
+                <input id="action_{{ s.PRN }}" value="{{ s.mentor_action or '' }}" style="width:90%;">
+            </td>
+            <td>
+                <button onclick="saveAction('{{ s.PRN }}')">Save</button>
+            </td>
+        </tr>
+        {% endfor %}
+    </table>
+
+    <br>
+
+    <button onclick="window.location.href='/select_auditorium'">
+        Change Auditorium
+    </button>
+
+    <button onclick="window.location.href='/logout'">
+        Logout
+    </button>
+
+</div>
+
+<script>
+function saveAction(prn){
+    let action = document.getElementById("action_" + prn).value;
+
+    fetch('/mentor_action', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+            prn: prn,
+            action: action
+        })
+    })
+    .then(res => res.json())
+    .then(data => {
+        if(data.success){
+            alert("Mentor action saved");
+        } else {
+            alert(data.error || "Could not save");
+        }
+    });
+}
+</script>
+
+</body>
+</html>

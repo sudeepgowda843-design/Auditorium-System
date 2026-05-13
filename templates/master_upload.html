@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Upload Master Data</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+
+<body>
+
+<div class="center-box">
+
+    <img src="/static/logo.png" class="logo">
+
+    <h2>Upload Student Master Data</h2>
+
+    <p style="color:white;">
+        Required columns:<br>
+        PRN, SRN, Name, Department, Section, Batch, Mentor, Status
+    </p>
+
+    <form method="POST" enctype="multipart/form-data">
+        <input type="file" name="file" required>
+        <button type="submit">Upload Master File</button>
+    </form>
+
+    <button onclick="window.location.href='/admin_dashboard'">
+        Back
+    </button>
+
+</div>
+
+</body>
+</html>

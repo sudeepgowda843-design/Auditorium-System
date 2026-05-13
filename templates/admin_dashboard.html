@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Admin Dashboard</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+
+<body>
+
+<div class="center-box" style="width:90%; max-width:900px;">
+
+    <img src="/static/logo.png" class="logo">
+
+    <h2>Department Admin Dashboard</h2>
+
+    <h3>Total Students: {{ total_students }}</h3>
+    <h3>Active Students: {{ active_students }}</h3>
+    <h3>Total Mentors: {{ total_mentors }}</h3>
+    <h3>Total Events: {{ total_events }}</h3>
+
+    <br>
+
+    <button onclick="window.location.href='/upload_master'">
+        Upload / Update Student Master
+    </button>
+
+    <button onclick="window.location.href='/create_event'">
+        Create New Event
+    </button>
+
+    <button onclick="window.location.href='/select_event'">
+        Open Existing Event
+    </button>
+
+    <button onclick="window.location.href='/download_master'">
+        Download Master Data
+    </button>
+
+    <button onclick="window.location.href='/logout'">
+        Logout
+    </button>
+
+</div>
+
+</body>
+</html>

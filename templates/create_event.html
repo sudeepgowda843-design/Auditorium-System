@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Create Event</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<div class="center-box">
+    <img src="/static/logo.png" class="logo">
+    <h2>Create New Event</h2>
+
+    <form method="POST">
+        <input name="event_name" placeholder="Event Name" required>
+
+        <input type="date" name="event_date" required>
+
+        <select name="auditorium" required>
+            <option value="">Select Auditorium</option>
+            <option value="1A">1A</option>
+            <option value="1B">1B</option>
+            <option value="2A">2A</option>
+            <option value="2B">2B</option>
+        </select>
+
+        <button type="submit">Create Event</button>
+    </form>
+
+    <button onclick="window.location.href='/admin_dashboard'">Back</button>
+</div>
+
+</body>
+</html>

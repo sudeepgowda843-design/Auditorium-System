@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Select Event</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<div class="center-box" style="width:90%; max-width:700px;">
+    <img src="/static/logo.png" class="logo">
+    <h2 style="color:white;">Select Event</h2>
+
+    <form method="POST">
+        <select name="event_id" required>
+            <option value="">Select Event</option>
+
+            {% for e in events %}
+            <option value="{{ e[0] }}">
+                {{ e[1] }} | {{ e[2] }} | Auditorium {{ e[3] }} | {{ e[4] }}
+            </option>
+            {% endfor %}
+        </select>
+
+        <button type="submit">Continue</button>
+    </form>
+
+    <button onclick="window.location.href='/logout'">Logout</button>
+</div>
+
+</body>
+</html>

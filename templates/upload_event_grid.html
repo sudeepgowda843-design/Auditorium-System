@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Upload Event Grid</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<div class="center-box">
+    <img src="/static/logo.png" class="logo">
+    <h2 style="color:white;">Upload Event Seating Grid</h2>
+
+    <p style="color:white;">
+        Upload Excel with columns:<br>
+        <b>PRN | Seat</b><br>
+        or<br>
+        <b>SRN | Seat</b>
+    </p>
+
+    <form method="POST" enctype="multipart/form-data">
+        <input type="file" name="file" required>
+        <button type="submit">Upload Grid</button>
+    </form>
+
+    <button onclick="window.location.href='/admin_dashboard'">Back</button>
+</div>
+
+</body>
+</html>

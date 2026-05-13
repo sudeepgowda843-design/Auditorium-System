@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>FOMC Dashboard</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+
+<body>
+
+<div class="header">
+    <img src="/static/logo.png" class="logo">
+    <h1>FOMC Dashboard</h1>
+    <h3>Overall Attendance, Discipline & Mentor Action Analytics</h3>
+</div>
+
+<div class="center-box" style="width:95%; max-width:1250px;">
+
+    <div style="display:grid; grid-template-columns:repeat(5,1fr); gap:15px;">
+
+        <div class="glass-card">
+            <h3>Total Students</h3>
+            <h1>{{ total_students }}</h1>
+        </div>
+
+        <div class="glass-card">
+            <h3>Active Students</h3>
+            <h1>{{ active_students }}</h1>
+        </div>
+
+        <div class="glass-card">
+            <h3>Departments</h3>
+            <h1>{{ total_departments }}</h1>
+        </div>
+
+        <div class="glass-card">
+            <h3>Mentors</h3>
+            <h1>{{ total_mentors }}</h1>
+        </div>
+
+        <div class="glass-card">
+            <h3>Events</h3>
+            <h1>{{ total_events }}</h1>
+        </div>
+
+    </div>
+
+    <br><br>
+
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:20px;">
+
+        <div class="glass-card">
+            <h3>Department-wise Attendance %</h3>
+            <canvas id="deptAttendanceChart"></canvas>
+        </div>
+
+        <div class="glass-card">
+            <h3>Discipline Cases by Department</h3>
+            <canvas id="disciplineChart"></canvas>
+        </div>
+
+    </div>
+
+    <br>
+
+    <div class="glass-card">
+        <h3>Mentor Action Taken vs Pending</h3>
+        <canvas id="mentorActionChart"></canvas>
+    </div>
+
+    <br>
+
+    <div class="glass-card">
+        <h3>Frequent Absentee / Risk Students</h3>
+
+        <table width="100%">
+            <tr>
+                <th>PRN</th>
+                <th>SRN</th>
+                <th>Name</th>
+                <th>Department</th>
+                <th>Mentor</th>
+                <th>Total Events</th>
+                <th>Absent Count</th>
+            </tr>
+
+            {% for s in risk_students %}
+            <tr>
+                <td>{{ s[0] }}</td>
+                <td>{{ s[1] }}</td>
+                <td>{{ s[2] }}</td>
+                <td>{{ s[3] }}</td>
+                <td>{{ s[4] }}</td>
+                <td>{{ s[5] }}</td>
+                <td>{{ s[6] }}</td>
+            </tr>
+            {% endfor %}
+        </table>
+    </div>
+
+    <br>
+
+    <button onclick="window.location.href='/download_master'">
+        Download Master Data
+    </button>
+
+    <button onclick="window.location.href='/logout'">
+        Logout
+    </button>
+
+</div>
+
+<script>
+const deptLabels = {{ dept_labels | tojson }};
+const deptPercentages = {{ dept_percentages | tojson }};
+
+const mentorLabels = {{ mentor_labels | tojson }};
+const mentorActionTaken = {{ mentor_action_taken | tojson }};
+const mentorPending = {{ mentor_pending | tojson }};
+
+const disciplineLabels = {{ discipline_labels | tojson }};
+const disciplineCounts = {{ discipline_counts | tojson }};
+
+new Chart(document.getElementById('deptAttendanceChart'), {
+    type: 'bar',
+    data: {
+        labels: deptLabels,
+        datasets: [{
+            label: 'Attendance %',
+            data: deptPercentages
+        }]
+    },
+    options: {
+        responsive: true,
+        scales: {
+            y: {
+                min: 0,
+                max: 100
+            }
+        }
+    }
+});
+
+new Chart(document.getElementById('disciplineChart'), {
+    type: 'bar',
+    data: {
+        labels: disciplineLabels,
+        datasets: [{
+            label: 'Discipline Cases',
+            data: disciplineCounts
+        }]
+    },
+    options: {
+        responsive: true
+    }
+});
+
+new Chart(document.getElementById('mentorActionChart'), {
+    type: 'bar',
+    data: {
+        labels: mentorLabels,
+        datasets: [
+            {
+                label: 'Action Taken',
+                data: mentorActionTaken
+            },
+            {
+                label: 'Pending',
+                data: mentorPending
+            }
+        ]
+    },
+    options: {
+        responsive: true,
+        indexAxis: 'y'
+    }
+});
+</script>
+
+</body>
+</html>
