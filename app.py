@@ -1,5 +1,6 @@
 from flask import Flask, render_template, request, redirect, jsonify, session, send_file
-import sqlite3
+import psycopg2
+from psycopg2.extras import execute_values
 import pandas as pd
 import os
 from datetime import datetime
@@ -7,11 +8,12 @@ from datetime import datetime
 app = Flask(__name__)
 app.secret_key = "secret123"
 
-MASTER_DB = "auditorium_system.db"
+DATABASE_URL = os.environ.get("DATABASE_URL")
 
 # =========================
 # USERS
 # =========================
+
 USERS = {
     "FOMC": {
         "fomc": {"password": "fomc@2026", "role": "fomc"}
@@ -70,8 +72,17 @@ AUDITORIUM_CONFIG = {
 
 
 # =========================
-# HELPERS
+# DATABASE HELPERS
 # =========================
+
+def get_conn():
+    if not DATABASE_URL:
+        raise RuntimeError(
+            "DATABASE_URL is not set. Add it in Render Environment Variables or export it locally."
+        )
+    return psycopg2.connect(DATABASE_URL)
+
+
 def normalize_seat(seat):
     if not seat:
         return None
@@ -82,8 +93,8 @@ def get_active_event_id():
     return session.get("event_id")
 
 
-def init_master_db():
-    conn = sqlite3.connect(MASTER_DB)
+def init_db():
+    conn = get_conn()
     cursor = conn.cursor()
 
     cursor.execute("""
@@ -101,7 +112,7 @@ def init_master_db():
 
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS events (
-        event_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        event_id SERIAL PRIMARY KEY,
         event_name TEXT,
         event_date TEXT,
         auditorium TEXT,
@@ -113,9 +124,9 @@ def init_master_db():
 
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS event_seating (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        event_id INTEGER,
-        PRN TEXT,
+        id SERIAL PRIMARY KEY,
+        event_id INTEGER REFERENCES events(event_id) ON DELETE CASCADE,
+        PRN TEXT REFERENCES students_master(PRN),
         Seat TEXT,
         status TEXT DEFAULT 'OUT',
         remark TEXT,
@@ -126,25 +137,28 @@ def init_master_db():
     """)
 
     conn.commit()
+    cursor.close()
     conn.close()
 
 
-init_master_db()
+init_db()
 
 
 def mentor_exists(dept, mentor_name):
-    conn = sqlite3.connect(MASTER_DB)
+    conn = get_conn()
     cursor = conn.cursor()
 
     cursor.execute("""
         SELECT COUNT(*)
         FROM students_master
-        WHERE UPPER(Department)=UPPER(?)
-        AND Mentor=?
+        WHERE UPPER(Department)=UPPER(%s)
+        AND Mentor=%s
         AND Status='Active'
     """, (dept, mentor_name))
 
     count = cursor.fetchone()[0]
+
+    cursor.close()
     conn.close()
 
     return count > 0
@@ -153,6 +167,7 @@ def mentor_exists(dept, mentor_name):
 # =========================
 # LOGIN
 # =========================
+
 @app.route('/', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
@@ -196,6 +211,7 @@ def login():
 # =========================
 # ADMIN DASHBOARD
 # =========================
+
 @app.route('/admin_dashboard')
 def admin_dashboard():
     if session.get("role") != "admin":
@@ -203,16 +219,20 @@ def admin_dashboard():
 
     dept = session.get("department")
 
-    conn = sqlite3.connect(MASTER_DB)
+    conn = get_conn()
     cursor = conn.cursor()
 
-    cursor.execute("SELECT COUNT(*) FROM students_master WHERE UPPER(Department)=UPPER(?)", (dept,))
+    cursor.execute("""
+        SELECT COUNT(*)
+        FROM students_master
+        WHERE UPPER(Department)=UPPER(%s)
+    """, (dept,))
     total_students = cursor.fetchone()[0]
 
     cursor.execute("""
         SELECT COUNT(*)
         FROM students_master
-        WHERE UPPER(Department)=UPPER(?)
+        WHERE UPPER(Department)=UPPER(%s)
         AND Status='Active'
     """, (dept,))
     active_students = cursor.fetchone()[0]
@@ -220,7 +240,7 @@ def admin_dashboard():
     cursor.execute("""
         SELECT COUNT(DISTINCT Mentor)
         FROM students_master
-        WHERE UPPER(Department)=UPPER(?)
+        WHERE UPPER(Department)=UPPER(%s)
         AND Mentor IS NOT NULL
         AND Mentor != ''
     """, (dept,))
@@ -229,10 +249,11 @@ def admin_dashboard():
     cursor.execute("""
         SELECT COUNT(*)
         FROM events
-        WHERE UPPER(department)=UPPER(?)
+        WHERE UPPER(department)=UPPER(%s)
     """, (dept,))
     total_events = cursor.fetchone()[0]
 
+    cursor.close()
     conn.close()
 
     return render_template(
@@ -262,35 +283,58 @@ def upload_master():
         df = pd.read_excel(file)
         df.columns = df.columns.str.strip()
 
-        required_columns = ["PRN", "SRN", "Name", "Department", "Section", "Batch", "Mentor", "Status"]
+        required_columns = [
+            "PRN", "SRN", "Name", "Department",
+            "Section", "Batch", "Mentor", "Status"
+        ]
+
         missing = [col for col in required_columns if col not in df.columns]
 
         if missing:
             return f"Missing columns in Excel: {missing}"
 
-        conn = sqlite3.connect(MASTER_DB)
-        cursor = conn.cursor()
+        values = []
 
         for _, row in df.iterrows():
             prn = str(row.get("PRN", "")).strip()
-            srn = str(row.get("SRN", "")).strip()
-            name = str(row.get("Name", "")).strip()
-            department = str(row.get("Department", "")).strip().upper()
-            section = str(row.get("Section", "")).strip()
-            batch = str(row.get("Batch", "")).strip()
-            mentor = str(row.get("Mentor", "")).strip()
-            status = str(row.get("Status", "Active")).strip()
 
-            if not prn:
+            if not prn or prn.lower() == "nan":
                 continue
 
-            cursor.execute("""
-                INSERT OR REPLACE INTO students_master
-                (PRN, SRN, Name, Department, Section, Batch, Mentor, Status)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """, (prn, srn, name, department, section, batch, mentor, status))
+            values.append((
+                prn,
+                str(row.get("SRN", "")).strip(),
+                str(row.get("Name", "")).strip(),
+                str(row.get("Department", "")).strip().upper(),
+                str(row.get("Section", "")).strip(),
+                str(row.get("Batch", "")).strip(),
+                str(row.get("Mentor", "")).strip(),
+                str(row.get("Status", "Active")).strip()
+            ))
+
+        if not values:
+            return "No valid student records found in Excel"
+
+        conn = get_conn()
+        cursor = conn.cursor()
+
+        execute_values(cursor, """
+            INSERT INTO students_master
+            (PRN, SRN, Name, Department, Section, Batch, Mentor, Status)
+            VALUES %s
+            ON CONFLICT (PRN)
+            DO UPDATE SET
+                SRN=EXCLUDED.SRN,
+                Name=EXCLUDED.Name,
+                Department=EXCLUDED.Department,
+                Section=EXCLUDED.Section,
+                Batch=EXCLUDED.Batch,
+                Mentor=EXCLUDED.Mentor,
+                Status=EXCLUDED.Status
+        """, values)
 
         conn.commit()
+        cursor.close()
         conn.close()
 
         return redirect('/admin_dashboard')
@@ -298,24 +342,11 @@ def upload_master():
     return render_template('master_upload.html')
 
 
-@app.route('/download_master')
-def download_master():
-    if session.get("role") not in ["admin", "fomc"]:
-        return redirect('/')
-
-    conn = sqlite3.connect(MASTER_DB)
-    df = pd.read_sql_query("SELECT * FROM students_master", conn)
-    conn.close()
-
-    file_path = "student_master_download.xlsx"
-    df.to_excel(file_path, index=False)
-
-    return send_file(file_path, as_attachment=True)
-
 
 # =========================
 # EVENT CREATION
 # =========================
+
 @app.route('/create_event', methods=['GET', 'POST'])
 def create_event():
     if session.get("role") != "admin":
@@ -328,13 +359,14 @@ def create_event():
         department = session.get("department")
         created_by = session.get("username")
 
-        conn = sqlite3.connect(MASTER_DB)
+        conn = get_conn()
         cursor = conn.cursor()
 
         cursor.execute("""
             INSERT INTO events
             (event_name, event_date, auditorium, department, created_by, created_at)
-            VALUES (?, ?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s, %s)
+            RETURNING event_id
         """, (
             event_name,
             event_date,
@@ -344,9 +376,10 @@ def create_event():
             datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         ))
 
-        event_id = cursor.lastrowid
+        event_id = cursor.fetchone()[0]
 
         conn.commit()
+        cursor.close()
         conn.close()
 
         session["event_id"] = event_id
@@ -360,6 +393,7 @@ def create_event():
 # =========================
 # SELECT EVENT
 # =========================
+
 @app.route('/select_event', methods=['GET', 'POST'])
 def select_event():
     role = session.get("role")
@@ -368,13 +402,13 @@ def select_event():
     if role not in ["student", "mentor", "admin"]:
         return redirect('/')
 
-    conn = sqlite3.connect(MASTER_DB)
+    conn = get_conn()
     cursor = conn.cursor()
 
     cursor.execute("""
         SELECT event_id, event_name, event_date, auditorium, department
         FROM events
-        WHERE UPPER(department)=UPPER(?)
+        WHERE UPPER(department)=UPPER(%s)
         ORDER BY event_id DESC
     """, (dept,))
 
@@ -386,10 +420,12 @@ def select_event():
         cursor.execute("""
             SELECT auditorium, department
             FROM events
-            WHERE event_id=?
+            WHERE event_id=%s
         """, (event_id,))
 
         event = cursor.fetchone()
+
+        cursor.close()
         conn.close()
 
         if not event:
@@ -404,6 +440,7 @@ def select_event():
 
         return redirect('/grid')
 
+    cursor.close()
     conn.close()
 
     return render_template('select_event.html', events=events)
@@ -438,11 +475,12 @@ def upload_event_grid():
         if "PRN" not in df.columns and "SRN" not in df.columns:
             return "Excel must contain PRN or SRN column"
 
-        conn = sqlite3.connect(MASTER_DB)
+        conn = get_conn()
         cursor = conn.cursor()
 
-        cursor.execute("DELETE FROM event_seating WHERE event_id=?", (event_id,))
+        cursor.execute("DELETE FROM event_seating WHERE event_id=%s", (event_id,))
 
+        seating_values = []
         missing_students = []
 
         for _, row in df.iterrows():
@@ -453,20 +491,20 @@ def upload_event_grid():
             if not seat:
                 continue
 
-            if prn:
+            if prn and prn.lower() != "nan":
                 cursor.execute("""
                     SELECT PRN
                     FROM students_master
-                    WHERE PRN=?
-                    AND UPPER(Department)=UPPER(?)
+                    WHERE PRN=%s
+                    AND UPPER(Department)=UPPER(%s)
                     AND Status='Active'
                 """, (prn, dept))
             else:
                 cursor.execute("""
                     SELECT PRN
                     FROM students_master
-                    WHERE SRN=?
-                    AND UPPER(Department)=UPPER(?)
+                    WHERE SRN=%s
+                    AND UPPER(Department)=UPPER(%s)
                     AND Status='Active'
                 """, (srn, dept))
 
@@ -476,35 +514,45 @@ def upload_event_grid():
                 missing_students.append(prn or srn)
                 continue
 
-            final_prn = student[0]
-
-            cursor.execute("""
-                INSERT OR REPLACE INTO event_seating
-                (event_id, PRN, Seat, status, remark, mentor_action)
-                VALUES (?, ?, ?, ?, ?, ?)
-            """, (
+            seating_values.append((
                 event_id,
-                final_prn,
+                student[0],
                 seat,
                 "OUT",
                 "",
                 ""
             ))
 
+        if seating_values:
+            execute_values(cursor, """
+                INSERT INTO event_seating
+                (event_id, PRN, Seat, status, remark, mentor_action)
+                VALUES %s
+                ON CONFLICT (event_id, PRN)
+                DO UPDATE SET
+                    Seat=EXCLUDED.Seat,
+                    status=EXCLUDED.status,
+                    remark=EXCLUDED.remark,
+                    mentor_action=EXCLUDED.mentor_action
+            """, seating_values)
+
         conn.commit()
+        cursor.close()
         conn.close()
 
         if missing_students:
-            return f"Upload completed, but these students were not found in master database: {missing_students}"
+            return f"Upload completed, but these students were not found in master database: {missing_students[:50]}"
 
         return redirect('/grid')
 
     return render_template('upload_event_grid.html')
 
 
+
 # =========================
 # GRID
 # =========================
+
 @app.route('/grid')
 def grid():
     auditorium = session.get("auditorium")
@@ -525,6 +573,7 @@ def grid():
 # =========================
 # SEATS API
 # =========================
+
 @app.route('/seats')
 def get_seats():
     event_id = get_active_event_id()
@@ -532,17 +581,19 @@ def get_seats():
     if not event_id:
         return jsonify([])
 
-    conn = sqlite3.connect(MASTER_DB)
+    conn = get_conn()
     cursor = conn.cursor()
 
     cursor.execute("""
         SELECT es.Seat, sm.Name, es.status
         FROM event_seating es
         JOIN students_master sm ON es.PRN = sm.PRN
-        WHERE es.event_id=?
+        WHERE es.event_id=%s
     """, (event_id,))
 
     rows = cursor.fetchall()
+
+    cursor.close()
     conn.close()
 
     return jsonify([
@@ -554,6 +605,7 @@ def get_seats():
 # =========================
 # SCAN
 # =========================
+
 @app.route('/scan', methods=['POST'])
 def scan():
     data = request.get_json()
@@ -563,20 +615,21 @@ def scan():
     if not event_id:
         return jsonify({"error": "No active event selected"})
 
-    conn = sqlite3.connect(MASTER_DB)
+    conn = get_conn()
     cursor = conn.cursor()
 
     cursor.execute("""
         SELECT es.id, sm.Name, es.Seat, es.status
         FROM event_seating es
         JOIN students_master sm ON es.PRN = sm.PRN
-        WHERE es.event_id=?
-        AND (sm.SRN=? OR sm.PRN=?)
+        WHERE es.event_id=%s
+        AND (sm.SRN=%s OR sm.PRN=%s)
     """, (event_id, student_id, student_id))
 
     student = cursor.fetchone()
 
     if not student:
+        cursor.close()
         conn.close()
         return jsonify({"error": "Student not found in this event"})
 
@@ -585,11 +638,12 @@ def scan():
 
     cursor.execute("""
         UPDATE event_seating
-        SET status=?
-        WHERE id=?
+        SET status=%s
+        WHERE id=%s
     """, (new_status, seating_id))
 
     conn.commit()
+    cursor.close()
     conn.close()
 
     return jsonify({
@@ -602,6 +656,7 @@ def scan():
 # =========================
 # STUDENT BY SEAT
 # =========================
+
 @app.route('/student/<seat>')
 def get_student(seat):
     event_id = get_active_event_id()
@@ -610,18 +665,20 @@ def get_student(seat):
     if not event_id:
         return jsonify({"error": "No active event"})
 
-    conn = sqlite3.connect(MASTER_DB)
+    conn = get_conn()
     cursor = conn.cursor()
 
     cursor.execute("""
         SELECT sm.Name, sm.SRN, es.status, es.remark
         FROM event_seating es
         JOIN students_master sm ON es.PRN = sm.PRN
-        WHERE es.event_id=?
-        AND es.Seat=?
+        WHERE es.event_id=%s
+        AND es.Seat=%s
     """, (event_id, seat))
 
     student = cursor.fetchone()
+
+    cursor.close()
     conn.close()
 
     if student:
@@ -638,6 +695,7 @@ def get_student(seat):
 # =========================
 # DISCIPLINE
 # =========================
+
 @app.route('/discipline', methods=['POST'])
 def discipline():
     data = request.get_json()
@@ -648,17 +706,18 @@ def discipline():
     if not event_id:
         return jsonify({"error": "No active event"})
 
-    conn = sqlite3.connect(MASTER_DB)
+    conn = get_conn()
     cursor = conn.cursor()
 
     cursor.execute("""
         UPDATE event_seating
-        SET remark=?
-        WHERE event_id=?
-        AND Seat=?
+        SET remark=%s
+        WHERE event_id=%s
+        AND Seat=%s
     """, (action, event_id, seat))
 
     conn.commit()
+    cursor.close()
     conn.close()
 
     return jsonify({"success": True})
@@ -667,6 +726,7 @@ def discipline():
 # =========================
 # MENTOR DASHBOARD
 # =========================
+
 @app.route('/mentor_dashboard')
 def mentor_dashboard():
     if session.get("role") != "mentor":
@@ -678,7 +738,7 @@ def mentor_dashboard():
     if not event_id:
         return redirect('/select_event')
 
-    conn = sqlite3.connect(MASTER_DB)
+    conn = get_conn()
     cursor = conn.cursor()
 
     cursor.execute("""
@@ -686,8 +746,8 @@ def mentor_dashboard():
                es.Seat, es.status, es.remark, es.mentor_action
         FROM event_seating es
         JOIN students_master sm ON es.PRN = sm.PRN
-        WHERE es.event_id=?
-        AND sm.Mentor=?
+        WHERE es.event_id=%s
+        AND sm.Mentor=%s
         AND sm.Status='Active'
         ORDER BY sm.Section, sm.Name
     """, (event_id, mentor_name))
@@ -722,8 +782,8 @@ def mentor_dashboard():
         SELECT es.remark, COUNT(*)
         FROM event_seating es
         JOIN students_master sm ON es.PRN = sm.PRN
-        WHERE es.event_id=?
-        AND sm.Mentor=?
+        WHERE es.event_id=%s
+        AND sm.Mentor=%s
         AND es.remark IS NOT NULL
         AND es.remark != ''
         GROUP BY es.remark
@@ -737,13 +797,14 @@ def mentor_dashboard():
                SUM(CASE WHEN es.status='IN' THEN 1 ELSE 0 END) AS attended_events
         FROM event_seating es
         JOIN students_master sm ON es.PRN = sm.PRN
-        WHERE sm.Mentor=?
+        WHERE sm.Mentor=%s
         AND sm.Status='Active'
         GROUP BY sm.PRN, sm.Name
         ORDER BY sm.Name
     """, (mentor_name,))
     student_attendance_rows = cursor.fetchall()
 
+    cursor.close()
     conn.close()
 
     discipline_labels = [r[0] for r in discipline_rows]
@@ -776,6 +837,7 @@ def mentor_dashboard():
 # =========================
 # MENTOR ACTION
 # =========================
+
 @app.route('/mentor_action', methods=['POST'])
 def mentor_action():
     if session.get("role") != "mentor":
@@ -787,31 +849,33 @@ def mentor_action():
     event_id = get_active_event_id()
     mentor_name = session.get("mentor_name")
 
-    conn = sqlite3.connect(MASTER_DB)
+    conn = get_conn()
     cursor = conn.cursor()
 
     cursor.execute("""
         SELECT COUNT(*)
         FROM students_master
-        WHERE PRN=?
-        AND Mentor=?
+        WHERE PRN=%s
+        AND Mentor=%s
         AND Status='Active'
     """, (prn, mentor_name))
 
     allowed = cursor.fetchone()[0]
 
     if not allowed:
+        cursor.close()
         conn.close()
         return jsonify({"error": "Unauthorized student"})
 
     cursor.execute("""
         UPDATE event_seating
-        SET mentor_action=?
-        WHERE event_id=?
-        AND PRN=?
+        SET mentor_action=%s
+        WHERE event_id=%s
+        AND PRN=%s
     """, (action, event_id, prn))
 
     conn.commit()
+    cursor.close()
     conn.close()
 
     return jsonify({"success": True})
@@ -820,6 +884,7 @@ def mentor_action():
 # =========================
 # FOMC DASHBOARD
 # =========================
+
 @app.route('/fomc_dashboard')
 def fomc_dashboard():
     if session.get("role") != "fomc":
@@ -829,7 +894,7 @@ def fomc_dashboard():
     event_filter = request.args.get("event_id", "ALL")
     mentor_filter = request.args.get("mentor", "ALL")
 
-    conn = sqlite3.connect(MASTER_DB)
+    conn = get_conn()
     cursor = conn.cursor()
 
     cursor.execute("""
@@ -882,15 +947,15 @@ def fomc_dashboard():
     params = []
 
     if department_filter != "ALL":
-        conditions.append("UPPER(sm.Department)=UPPER(?)")
+        conditions.append("UPPER(sm.Department)=UPPER(%s)")
         params.append(department_filter)
 
     if event_filter != "ALL":
-        conditions.append("e.event_id=?")
+        conditions.append("e.event_id=%s")
         params.append(event_filter)
 
     if mentor_filter != "ALL":
-        conditions.append("sm.Mentor=?")
+        conditions.append("sm.Mentor=%s")
         params.append(mentor_filter)
 
     where_clause = ""
@@ -980,6 +1045,7 @@ def fomc_dashboard():
     """, params)
     student_rows = cursor.fetchall()
 
+    cursor.close()
     conn.close()
 
     dept_labels = [row[0] for row in dept_attendance_rows]
@@ -1053,6 +1119,7 @@ def fomc_dashboard():
 # =========================
 # DOWNLOAD EVENT REPORT
 # =========================
+
 @app.route('/download')
 def download():
     event_id = get_active_event_id()
@@ -1060,7 +1127,7 @@ def download():
     if not event_id:
         return redirect('/select_event')
 
-    conn = sqlite3.connect(MASTER_DB)
+    conn = get_conn()
 
     df = pd.read_sql_query("""
         SELECT e.event_name, e.event_date, e.auditorium,
@@ -1069,7 +1136,7 @@ def download():
         FROM event_seating es
         JOIN students_master sm ON es.PRN = sm.PRN
         JOIN events e ON es.event_id = e.event_id
-        WHERE es.event_id=?
+        WHERE es.event_id=%s
     """, conn, params=(event_id,))
 
     conn.close()
@@ -1083,6 +1150,7 @@ def download():
 # =========================
 # RESET EVENT
 # =========================
+
 @app.route('/reset', methods=['POST'])
 def reset():
     if session.get("role") != "admin":
@@ -1093,26 +1161,35 @@ def reset():
     if not event_id:
         return jsonify({"error": "No active event"})
 
-    conn = sqlite3.connect(MASTER_DB)
+    conn = get_conn()
     cursor = conn.cursor()
 
     cursor.execute("""
         UPDATE event_seating
         SET status='OUT', remark=NULL, mentor_action=NULL
-        WHERE event_id=?
+        WHERE event_id=%s
     """, (event_id,))
 
     conn.commit()
+    cursor.close()
     conn.close()
 
     return jsonify({"success": True})
 
+
+# =========================
+# LOGOUT
+# =========================
 
 @app.route('/logout')
 def logout():
     session.clear()
     return redirect('/')
 
+
+# =========================
+# RUN
+# =========================
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5050))
